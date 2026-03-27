@@ -110,10 +110,26 @@ After authentication, select the chat you want to export from the list, or paste
 ## Output
 
 The tool creates an `exports/` directory containing:
-- `chat_export.html` - Browsable archive with all messages and media
+- `chat_export.html` - WhatsApp-style browsable archive
+- `messages.json` - Raw text messages (saved immediately)
+- `transcriptions.json` - Cached voice/video transcriptions
+- `descriptions.json` - Cached image descriptions
 - `media/` - Downloaded photos, videos, voice notes, documents
 
-Voice notes and videos will have transcriptions embedded in the HTML.
+### Features:
+- **WhatsApp-style design** - Light background, green outgoing bubbles, white incoming
+- **Transcriptions** - Voice notes and videos transcribed automatically
+- **Image descriptions** - Photos described using BLIP AI model
+- **Language detection** - Auto-detects Dutch/English/etc. for better transcription
+
+## Image Descriptions
+
+Photos are automatically described using BLIP (Bootstrapping Language-Image Pre-training):
+- Runs locally on your machine (no API calls)
+- First run downloads ~1GB model
+- Descriptions cached in `descriptions.json`
+
+To skip image descriptions, press Ctrl+C during "PHASE 2b".
 
 ## Transcription Options
 
