@@ -62,7 +62,7 @@ async def download_media(client: TelegramClient, message: Message, media_dir: st
                 return None
             
             date_str = datetime.fromtimestamp(photo.date.timestamp()).strftime("%Y%m%d")
-            filename = f"photo_{date_str}_{photo.id}.jpg"
+            filename = f"{date_str}_{photo.id}_photo.jpg"
             filepath = os.path.join(media_dir, filename)
             
             if os.path.exists(filepath):
@@ -90,8 +90,9 @@ async def download_media(client: TelegramClient, message: Message, media_dir: st
             if is_voice and ext == '.oga':
                 ext = '.oga'
             
+            media_type = 'voice' if is_voice else ('video' if is_video else 'file')
             date_str = datetime.fromtimestamp(doc.date.timestamp()).strftime("%Y%m%d")
-            filename = f"file_{date_str}_{doc.id}{ext}"
+            filename = f"{date_str}_{doc.id}_{media_type}{ext}"
             filepath = os.path.join(media_dir, filename)
             
             if os.path.exists(filepath):
