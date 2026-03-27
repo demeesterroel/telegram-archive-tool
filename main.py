@@ -14,10 +14,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 
 from telethon import TelegramClient, sync
-from telethon.tl.types import (
-    Message, MessageMediaPhoto, MessageMediaDocument,
-    DocumentAttributeFilename
-)
+from telethon.tl.types import Message, MessageMediaPhoto, MessageMediaDocument
 import whisper
 
 MEDIA_DIR = "media"
@@ -54,16 +51,6 @@ def extract_audio_from_video(video_path: str, audio_path: str) -> bool:
         print(f"  Error extracting audio: {e}")
         return False
 
-def get_unique_filename(base_dir: str, filename: str) -> str:
-    safe_name = "".join(c if c.isalnum() or c in '.-_' else '_' for c in filename)
-    path = os.path.join(base_dir, safe_name)
-    counter = 1
-    while os.path.exists(path):
-        name, ext = os.path.splitext(safe_name)
-        path = os.path.join(base_dir, f"{name}_{counter}{ext}")
-        counter += 1
-    return path
-
 async def download_media(client: TelegramClient, message: Message, media_dir: str) -> Optional[Dict[str, Any]]:
     try:
         os.makedirs(media_dir, exist_ok=True)
@@ -78,7 +65,9 @@ async def download_media(client: TelegramClient, message: Message, media_dir: st
             filename = f"photo_{date_str}_{photo.id}.jpg"
             filepath = os.path.join(media_dir, filename)
             
-            if not os.path.exists(filepath):
+            if os.path.exists(filepath):
+                print(f"  Skipped (exists): {filename}")
+            else:
                 await client.download_media(message, filepath)
                 print(f"  Downloaded: {filename}")
             
@@ -97,18 +86,17 @@ async def download_media(client: TelegramClient, message: Message, media_dir: st
             is_voice = 'audio/ogg' in mime_type or 'audio/oga' in mime_type
             is_video = 'video' in mime_type
             
-            attrs = {type(attr).__name__: attr for attr in doc.attributes}
+            ext = mimetypes.guess_extension(mime_type) or ''
+            if is_voice and ext == '.oga':
+                ext = '.oga'
             
-            if DocumentAttributeFilename in attrs:
-                filename = attrs[DocumentAttributeFilename].file_name
+            date_str = datetime.fromtimestamp(doc.date.timestamp()).strftime("%Y%m%d")
+            filename = f"file_{date_str}_{doc.id}{ext}"
+            filepath = os.path.join(media_dir, filename)
+            
+            if os.path.exists(filepath):
+                print(f"  Skipped (exists): {filename}")
             else:
-                ext = mimetypes.guess_extension(mime_type) or ''
-                date_str = datetime.fromtimestamp(doc.date.timestamp()).strftime("%Y%m%d")
-                filename = f"file_{date_str}_{doc.id}{ext}"
-            
-            filepath = get_unique_filename(media_dir, filename)
-            
-            if not os.path.exists(filepath):
                 await client.download_media(message, filepath)
                 print(f"  Downloaded: {filename}")
             
