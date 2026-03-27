@@ -523,16 +523,24 @@ async def main():
         session_name = input("Session name (e.g., 'my_account'): ").strip()
         
         session_path = sessions_dir / session_name
-        client = TelegramClient(str(session_path), api_id, api_hash)
+        client = TelegramClient(str(session_path), int(api_id), api_hash)
         await client.start(phone)
+        
+        creds_file = session_path.with_suffix('.json')
+        with open(creds_file, 'w') as f:
+            json.dump({'api_id': int(api_id), 'api_hash': api_hash}, f)
+        
         print("Session created successfully!")
     else:
         session_path = sessions_dir / session_name
-        client = TelegramClient(str(session_path), api_id := None, api_hash := None)
+        creds_file = session_path.with_suffix('.json')
         
-        session_file = session_files[[s.stem for s in session_files].index(session_name)]
+        if not creds_file.exists():
+            print(f"Error: Credentials file not found for session '{session_name}'")
+            print("Please create a new session or provide credentials file.")
+            return
         
-        with open(session_file.with_suffix('.json'), 'r') as f:
+        with open(creds_file, 'r') as f:
             creds = json.load(f)
         
         client = TelegramClient(str(session_path.with_suffix('')), creds['api_id'], creds['api_hash'])
