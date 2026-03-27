@@ -115,27 +115,51 @@ The tool creates an `exports/` directory containing:
 
 Voice notes and videos will have transcriptions embedded in the HTML.
 
-## Whisper Model
+## Transcription Options
 
-By default, this tool uses the "base" Whisper model for transcription. You can change this in `main.py` by modifying:
+At startup, you'll choose a transcription method:
 
-```python
-transcription = transcribe_audio(filepath, "base")
+### Local Whisper (Free, runs on your machine)
+
+| Model | Speed | Quality | Best For |
+|-------|-------|---------|----------|
+| tiny | Fastest | Lowest | Quick tests |
+| base | Fast | Decent | Default |
+| **small** | Medium | Good | **Recommended for Dutch** |
+| medium | Slow (5x) | Very Good | Better accuracy |
+| large | Slowest (10x) | Best | Maximum quality |
+
+### Cloud API (Requires API key, faster)
+
+| Provider | Model | Cost | Quality |
+|----------|-------|------|---------|
+| Google Gemini | gemini-flash | ~$0.075/min | Excellent |
+| Google Gemini | gemini-pro | ~$0.075/min | Excellent |
+| OpenRouter | claude-sonnet | ~$0.008/min | Excellent |
+| OpenRouter | claude-opus | ~$0.008/min | Best |
+
+**API Keys:**
+- **Gemini**: Get from https://aistudio.google.com/app/apikey
+- **OpenRouter**: Get from https://openrouter.ai/keys
+
+Keys are stored in `sessions/config.json` or set as environment variables:
+```bash
+export GEMINI_API_KEY=your_key
+export OPENROUTER_API_KEY=your_key
 ```
 
-Available models (faster → slower, less accurate → more accurate):
-- `tiny` - Fastest, lowest accuracy
-- `base` - Good balance (default)
-- `small` - Better accuracy
-- `medium` - High accuracy
-- `large` - Best accuracy, slowest
+**Note:** OpenAI Whisper API is not included due to ethical concerns. See [QuitGPT](https://quitgpt.org/) for more information.
+
+### Language Detection
+
+For local Whisper, the tool auto-detects the language from the first audio file and uses it for all transcriptions. This improves accuracy for non-English languages like Dutch.
 
 ## Privacy & Security
 
 - All data is stored locally on your machine
 - Session files contain authentication data - never share them
-- This tool does not send your data to any third-party servers
-- Whisper runs locally - no API calls to external services
+- Local Whisper runs entirely on your machine
+- Cloud API keys are stored locally in `sessions/config.json`
 - Exported files are private - use `.gitignore` to prevent accidental commits
 
 ## Getting Telegram API Credentials
