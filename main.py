@@ -569,7 +569,7 @@ async def main():
             limit = int(limit_input) if limit_input.isdigit() else None
         elif filter_choice == "3":
             start_input = input("Start date (YYYY-MM-DD, or press Enter to skip): ").strip()
-            end_input = input("End date (YYYY-MM-DD, or press Enter to skip): ").strip()
+            end_input = input(f"End date (YYYY-MM-DD, default: {datetime.now().strftime('%Y-%m-%d')}): ").strip()
             
             if start_input:
                 try:
@@ -582,7 +582,10 @@ async def main():
                     end_date = datetime.strptime(end_input, "%Y-%m-%d")
                     end_date = end_date.replace(hour=23, minute=59, second=59)
                 except ValueError:
-                    print("Invalid end date format, ignoring...")
+                    print("Invalid end date format, using today...")
+                    end_date = datetime.now()
+            else:
+                end_date = datetime.now()
         
         print("\nStarting export...")
         messages = await export_chat(client, entity, str(output_dir), limit=limit, start_date=start_date, end_date=end_date)
