@@ -154,6 +154,8 @@ async def export_chat(
     entity,
     output_dir: str,
     limit: Optional[int] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
     include_media: bool = True,
     whisper_model: str = "base"
 ) -> List[Dict[str, Any]]:
@@ -163,8 +165,16 @@ async def export_chat(
     os.makedirs(media_dir, exist_ok=True)
     
     print(f"\nExporting messages...")
+    if start_date:
+        print(f"  From: {start_date.strftime('%Y-%m-%d')}")
+    if end_date:
+        print(f"  Until: {end_date.strftime('%Y-%m-%d')}")
     
     async for message in client.iter_messages(entity, limit=limit):
+        if start_date and message.date and message.date < start_date:
+            continue
+        if end_date and message.date and message.date > end_date:
+            continue
         msg_data = {
             "id": message.id,
             "date": message.date.isoformat() if message.date else None,
@@ -544,11 +554,38 @@ async def main():
         print(f"\nExporting chat: {chat_name}")
         print(f"Output directory: {output_dir}")
         
-        limit_input = input("\nMessage limit (press Enter for all): ").strip()
-        limit = int(limit_input) if limit_input.isdigit() else None
+        print("\nHow would you like to filter messages?")
+        print("  1. Export all messages")
+        print("  2. Set message limit")
+        print("  3. Set date range")
+        filter_choice = input("Select option (1-3): ").strip()
+        
+        limit = None
+        start_date = None
+        end_date = None
+        
+        if filter_choice == "2":
+            limit_input = input("Message limit: ").strip()
+            limit = int(limit_input) if limit_input.isdigit() else None
+        elif filter_choice == "3":
+            start_input = input("Start date (YYYY-MM-DD, or press Enter to skip): ").strip()
+            end_input = input("End date (YYYY-MM-DD, or press Enter to skip): ").strip()
+            
+            if start_input:
+                try:
+                    start_date = datetime.strptime(start_input, "%Y-%m-%d")
+                except ValueError:
+                    print("Invalid start date format, ignoring...")
+            
+            if end_input:
+                try:
+                    end_date = datetime.strptime(end_input, "%Y-%m-%d")
+                    end_date = end_date.replace(hour=23, minute=59, second=59)
+                except ValueError:
+                    print("Invalid end date format, ignoring...")
         
         print("\nStarting export...")
-        messages = await export_chat(client, entity, str(output_dir), limit=limit)
+        messages = await export_chat(client, entity, str(output_dir), limit=limit, start_date=start_date, end_date=end_date)
         
         participants = {}
         async for msg in client.iter_messages(entity, limit=min(len(messages), 100)):
