@@ -1,0 +1,42 @@
+# Session files (contain authentication)
+sessions/
+*.session
+*.session-journal
+*.json.bak
+
+# Exported data (private content)
+exports/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
+
+# Credentials (never commit these)
+credentials.json
+api_keys.txt
+config.local.json
