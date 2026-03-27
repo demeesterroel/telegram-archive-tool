@@ -173,43 +173,72 @@ async def download_messages(
     print(f"\n  Total messages: {len(messages_data)}")
     return messages_data
 
-def transcribe_media(messages: List[Dict[str, Any]], media_dir: str) -> None:
+def transcribe_media(messages: List[Dict[str, Any]], output_dir: str) -> None:
     print(f"\n{'='*60}")
     print("PHASE 2: Transcribing voice and video messages")
     print(f"{'='*60}")
+    
+    media_dir = os.path.join(output_dir, MEDIA_DIR)
+    transcriptions_file = os.path.join(output_dir, "transcriptions.json")
+    
+    existing_transcriptions = {}
+    if os.path.exists(transcriptions_file):
+        try:
+            with open(transcriptions_file, 'r', encoding='utf-8') as f:
+                existing_transcriptions = json.load(f)
+            print(f"  Loaded {len(existing_transcriptions)} existing transcriptions")
+        except:
+            pass
     
     media_to_transcribe = []
     for msg in messages:
         if msg.get('media'):
             m = msg['media']
             if m['type'] in ('voice', 'video'):
-                media_to_transcribe.append(m)
+                if m['filename'] in existing_transcriptions:
+                    m['transcription'] = existing_transcriptions[m['filename']]
+                else:
+                    media_to_transcribe.append(m)
     
-    if not media_to_transcribe:
+    if not media_to_transcribe and not existing_transcriptions:
         print("  No voice or video messages to transcribe.")
         return
     
-    print(f"  Found {len(media_to_transcribe)} voice/video messages\n")
-    
-    for i, m in enumerate(media_to_transcribe, 1):
-        print(f"[{i}/{len(media_to_transcribe)}] Processing: {m['filename']}")
+    if media_to_transcribe:
+        print(f"  Found {len(media_to_transcribe)} voice/video messages to transcribe\n")
         
-        if m['type'] == 'video':
-            audio_path = m['path'].rsplit('.', 1)[0] + "_audio.wav"
-            if extract_audio_from_video(m['path'], audio_path):
-                m['transcription'] = transcribe_audio(audio_path, "base")
-                try:
-                    os.remove(audio_path)
-                except:
-                    pass
+        for i, m in enumerate(media_to_transcribe, 1):
+            print(f"[{i}/{len(media_to_transcribe)}] Processing: {m['filename']}")
+            
+            if m['type'] == 'video':
+                audio_path = m['path'].rsplit('.', 1)[0] + "_audio.wav"
+                if extract_audio_from_video(m['path'], audio_path):
+                    m['transcription'] = transcribe_audio(audio_path, "base")
+                    try:
+                        os.remove(audio_path)
+                    except:
+                        pass
+                else:
+                    m['transcription'] = None
             else:
-                m['transcription'] = None
-        else:
-            m['transcription'] = transcribe_audio(m['path'], "base")
+                m['transcription'] = transcribe_audio(m['path'], "base")
+            
+            if m['transcription']:
+                existing_transcriptions[m['filename']] = m['transcription']
+            
+            print()
         
-        print()
+        with open(transcriptions_file, 'w', encoding='utf-8') as f:
+            json.dump(existing_transcriptions, f, ensure_ascii=False, indent=2)
+        
+        print("  Transcription complete!")
+    else:
+        print("  All transcriptions already exist. Skipping...")
     
-    print("  Transcription complete!")
+    for msg in messages:
+        if msg.get('media') and msg['media']['type'] in ('voice', 'video'):
+            if msg['media']['filename'] in existing_transcriptions:
+                msg['media']['transcription'] = existing_transcriptions[msg['media']['filename']]
 
 def get_sender_name(sender) -> str:
     if hasattr(sender, 'first_name'):
@@ -618,7 +647,7 @@ async def main():
         
         messages = await download_messages(client, entity, str(output_dir), limit=limit, start_date=start_date, end_date=end_date)
         
-        transcribe_media(messages, str(media_dir))
+        transcribe_media(messages, str(output_dir))
         
         participants = {}
         async for msg in client.iter_messages(entity, limit=min(len(messages), 100)):
