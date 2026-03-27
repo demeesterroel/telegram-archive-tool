@@ -29,11 +29,26 @@ def load_whisper_model(model_size: str = "base"):
         model_cache[model_size] = whisper.load_model(model_size)
     return model_cache[model_size]
 
-def transcribe_audio(file_path: str, model_size: str = "base") -> Optional[str]:
+def detect_language(file_path: str, model_size: str = "base") -> Optional[str]:
+    try:
+        model = load_whisper_model(model_size)
+        print(f"  Detecting language from: {os.path.basename(file_path)}")
+        audio = whisper.load_audio(file_path)
+        audio = whisper.pad_or_trim(audio)
+        mel = whisper.log_mel_spectrogram(audio, n_mels=80).to(model.device)
+        _, probs = model.detect_language(mel)
+        detected = max(probs, key=probs.get)
+        print(f"  Detected language: {detected} ({probs[detected]*100:.1f}% confidence)")
+        return detected
+    except Exception as e:
+        print(f"  Error detecting language: {e}")
+        return None
+
+def transcribe_audio(file_path: str, model_size: str = "base", language: Optional[str] = None) -> Optional[str]:
     try:
         model = load_whisper_model(model_size)
         print(f"  Transcribing: {os.path.basename(file_path)}")
-        result = model.transcribe(file_path)
+        result = model.transcribe(file_path, language=language)
         return result["text"].strip()
     except Exception as e:
         print(f"  Error transcribing {file_path}: {e}")
@@ -201,7 +216,24 @@ def transcribe_media(messages: List[Dict[str, Any]], output_dir: str) -> None:
         return
     
     if media_to_transcribe:
-        print(f"  Found {len(media_to_transcribe)} voice/video messages to transcribe\n")
+        print(f"  Found {len(media_to_transcribe)} voice/video messages to transcribe")
+        
+        detected_language = None
+        first_media = media_to_transcribe[0]
+        first_file = first_media['path']
+        if first_media['type'] == 'video':
+            first_file = first_file.rsplit('.', 1)[0] + "_audio.wav"
+            extract_audio_from_video(first_media['path'], first_file)
+        
+        detected_language = detect_language(first_file, "base")
+        
+        if first_media['type'] == 'video':
+            try:
+                os.remove(first_file)
+            except:
+                pass
+        
+        print()
         
         for i, m in enumerate(media_to_transcribe, 1):
             print(f"[{i}/{len(media_to_transcribe)}] {m['filename']}")
@@ -209,7 +241,7 @@ def transcribe_media(messages: List[Dict[str, Any]], output_dir: str) -> None:
             if m['type'] == 'video':
                 audio_path = m['path'].rsplit('.', 1)[0] + "_audio.wav"
                 if extract_audio_from_video(m['path'], audio_path):
-                    m['transcription'] = transcribe_audio(audio_path, "base")
+                    m['transcription'] = transcribe_audio(audio_path, "base", language=detected_language)
                     try:
                         os.remove(audio_path)
                     except:
@@ -217,7 +249,7 @@ def transcribe_media(messages: List[Dict[str, Any]], output_dir: str) -> None:
                 else:
                     m['transcription'] = None
             else:
-                m['transcription'] = transcribe_audio(m['path'], "base")
+                m['transcription'] = transcribe_audio(m['path'], "base", language=detected_language)
             
             if m['transcription']:
                 existing_transcriptions[m['filename']] = m['transcription']
