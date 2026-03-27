@@ -8,7 +8,6 @@ import os
 import sys
 import json
 import asyncio
-import hashlib
 import mimetypes
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,10 +16,8 @@ from typing import Optional, List, Dict, Any
 from telethon import TelegramClient, sync
 from telethon.tl.types import (
     Message, MessageMediaPhoto, MessageMediaDocument,
-    DocumentAttributeFilename, DocumentAttributeVideo,
-    DocumentAttributeAudio, PeerUser, PeerChannel, PeerChat
+    DocumentAttributeFilename
 )
-from telethon.tl.functions.messages import GetHistoryRequest
 import whisper
 
 MEDIA_DIR = "media"
@@ -57,13 +54,6 @@ def extract_audio_from_video(video_path: str, audio_path: str) -> bool:
         print(f"  Error extracting audio: {e}")
         return False
 
-def get_file_hash(file_path: str) -> str:
-    hasher = hashlib.md5()
-    with open(file_path, 'rb') as f:
-        for chunk in iter(lambda: f.read(8192), b''):
-            hasher.update(chunk)
-    return hasher.hexdigest()
-
 def get_unique_filename(base_dir: str, filename: str) -> str:
     safe_name = "".join(c if c.isalnum() or c in '.-_' else '_' for c in filename)
     path = os.path.join(base_dir, safe_name)
@@ -90,6 +80,7 @@ async def download_media(client: TelegramClient, message: Message, media_dir: st
             
             if not os.path.exists(filepath):
                 await client.download_media(message, filepath)
+                print(f"  Downloaded: {filename}")
             
             return {
                 "type": "photo",
@@ -119,28 +110,12 @@ async def download_media(client: TelegramClient, message: Message, media_dir: st
             
             if not os.path.exists(filepath):
                 await client.download_media(message, filepath)
-            
-            transcription = None
-            
-            if is_voice or is_video:
-                print(f"  Processing media: {filename}")
-                
-                if is_video:
-                    audio_path = filepath.rsplit('.', 1)[0] + "_audio.wav"
-                    if extract_audio_from_video(filepath, audio_path):
-                        transcription = transcribe_audio(audio_path, "base")
-                        try:
-                            os.remove(audio_path)
-                        except:
-                            pass
-                else:
-                    transcription = transcribe_audio(filepath, "base")
+                print(f"  Downloaded: {filename}")
             
             return {
                 "type": "voice" if is_voice else ("video" if is_video else "document"),
                 "path": filepath,
-                "filename": filename,
-                "transcription": transcription
+                "filename": filename
             }
         
         return None
@@ -149,32 +124,34 @@ async def download_media(client: TelegramClient, message: Message, media_dir: st
         print(f"  Error downloading media: {e}")
         return None
 
-async def export_chat(
+async def download_messages(
     client: TelegramClient,
     entity,
     output_dir: str,
     limit: Optional[int] = None,
     start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
-    include_media: bool = True,
-    whisper_model: str = "base"
+    end_date: Optional[datetime] = None
 ) -> List[Dict[str, Any]]:
     
     messages_data = []
     media_dir = os.path.join(output_dir, MEDIA_DIR)
     os.makedirs(media_dir, exist_ok=True)
     
-    print(f"\nExporting messages...")
+    print(f"\n{'='*60}")
+    print("PHASE 1: Downloading messages and media")
+    print(f"{'='*60}")
     if start_date:
         print(f"  From: {start_date.strftime('%Y-%m-%d')}")
     if end_date:
         print(f"  Until: {end_date.strftime('%Y-%m-%d')}")
+    print()
     
     async for message in client.iter_messages(entity, limit=limit):
         if start_date and message.date and message.date < start_date:
             continue
         if end_date and message.date and message.date > end_date:
             continue
+        
         msg_data = {
             "id": message.id,
             "date": message.date.isoformat() if message.date else None,
@@ -183,17 +160,56 @@ async def export_chat(
             "media": None
         }
         
-        if include_media and message.media:
+        if message.media:
             media_info = await download_media(client, message, media_dir)
             if media_info:
                 msg_data["media"] = media_info
         
         messages_data.append(msg_data)
         
-        if len(messages_data) % 100 == 0:
-            print(f"  Processed {len(messages_data)} messages...")
+        if len(messages_data) % 50 == 0:
+            print(f"  Progress: {len(messages_data)} messages processed")
     
+    print(f"\n  Total messages: {len(messages_data)}")
     return messages_data
+
+def transcribe_media(messages: List[Dict[str, Any]], media_dir: str) -> None:
+    print(f"\n{'='*60}")
+    print("PHASE 2: Transcribing voice and video messages")
+    print(f"{'='*60}")
+    
+    media_to_transcribe = []
+    for msg in messages:
+        if msg.get('media'):
+            m = msg['media']
+            if m['type'] in ('voice', 'video'):
+                media_to_transcribe.append(m)
+    
+    if not media_to_transcribe:
+        print("  No voice or video messages to transcribe.")
+        return
+    
+    print(f"  Found {len(media_to_transcribe)} voice/video messages\n")
+    
+    for i, m in enumerate(media_to_transcribe, 1):
+        print(f"[{i}/{len(media_to_transcribe)}] Processing: {m['filename']}")
+        
+        if m['type'] == 'video':
+            audio_path = m['path'].rsplit('.', 1)[0] + "_audio.wav"
+            if extract_audio_from_video(m['path'], audio_path):
+                m['transcription'] = transcribe_audio(audio_path, "base")
+                try:
+                    os.remove(audio_path)
+                except:
+                    pass
+            else:
+                m['transcription'] = None
+        else:
+            m['transcription'] = transcribe_audio(m['path'], "base")
+        
+        print()
+    
+    print("  Transcription complete!")
 
 def get_sender_name(sender) -> str:
     if hasattr(sender, 'first_name'):
@@ -204,6 +220,10 @@ def get_sender_name(sender) -> str:
     return str(sender.id)
 
 def generate_html(messages: List[Dict], participants: Dict[int, str], output_path: str, chat_name: str):
+    print(f"\n{'='*60}")
+    print("PHASE 3: Generating HTML output")
+    print(f"{'='*60}")
+    
     html_template = '''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -446,7 +466,7 @@ def generate_html(messages: List[Dict], participants: Dict[int, str], output_pat
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(html)
     
-    print(f"\nExport complete: {output_path}")
+    print(f"  Output: {output_path}")
 
 async def list_chats(client: TelegramClient):
     print("\nFetching your chats...")
@@ -558,6 +578,8 @@ async def main():
         
         output_dir = Path("exports") / chat_name.replace('/', '_').replace('\\', '_')
         output_dir.mkdir(parents=True, exist_ok=True)
+        media_dir = output_dir / MEDIA_DIR
+        media_dir.mkdir(exist_ok=True)
         
         print(f"\nExporting chat: {chat_name}")
         print(f"Output directory: {output_dir}")
@@ -594,8 +616,9 @@ async def main():
             else:
                 end_date = datetime.now(timezone.utc)
         
-        print("\nStarting export...")
-        messages = await export_chat(client, entity, str(output_dir), limit=limit, start_date=start_date, end_date=end_date)
+        messages = await download_messages(client, entity, str(output_dir), limit=limit, start_date=start_date, end_date=end_date)
+        
+        transcribe_media(messages, str(media_dir))
         
         participants = {}
         async for msg in client.iter_messages(entity, limit=min(len(messages), 100)):
@@ -609,7 +632,10 @@ async def main():
         output_file = output_dir / OUTPUT_FILE
         generate_html(messages, participants, str(output_file), chat_name)
         
-        print(f"\nDone! Open {output_file} in your browser to view the archive.")
+        print(f"\n{'='*60}")
+        print("EXPORT COMPLETE!")
+        print(f"{'='*60}")
+        print(f"\nOpen {output_file} in your browser to view the archive.")
         
     finally:
         await client.disconnect()
