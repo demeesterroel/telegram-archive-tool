@@ -10,7 +10,7 @@ import json
 import asyncio
 import hashlib
 import mimetypes
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -581,19 +581,18 @@ async def main():
             
             if start_input:
                 try:
-                    start_date = datetime.strptime(start_input, "%Y-%m-%d")
+                    start_date = datetime.strptime(start_input, "%Y-%m-%d").replace(tzinfo=timezone.utc)
                 except ValueError:
                     print("Invalid start date format, ignoring...")
             
             if end_input:
                 try:
-                    end_date = datetime.strptime(end_input, "%Y-%m-%d")
-                    end_date = end_date.replace(hour=23, minute=59, second=59)
+                    end_date = datetime.strptime(end_input, "%Y-%m-%d").replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
                 except ValueError:
                     print("Invalid end date format, using today...")
-                    end_date = datetime.now()
+                    end_date = datetime.now(timezone.utc)
             else:
-                end_date = datetime.now()
+                end_date = datetime.now(timezone.utc)
         
         print("\nStarting export...")
         messages = await export_chat(client, entity, str(output_dir), limit=limit, start_date=start_date, end_date=end_date)
