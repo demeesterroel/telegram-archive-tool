@@ -38,6 +38,39 @@ TRANSCRIPTION_METHODS = {
 DEFAULT_METHOD = "3"
 
 model_cache = {}
+blip_processor = None
+blip_model = None
+
+def load_blip_model():
+    global blip_processor, blip_model
+    if blip_processor is None:
+        print("  Downloading BLIP model for image descriptions...")
+        print("  (This may take a few minutes on first run)")
+        from transformers import BlipProcessor, BlipForConditionalGeneration
+        from tqdm import tqdm
+        import warnings
+        warnings.filterwarnings("ignore")
+        blip_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
+        blip_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
+        print("  BLIP model loaded successfully!")
+    return blip_processor, blip_model
+
+def describe_image(image_path: str, language: Optional[str] = None) -> Optional[str]:
+    try:
+        from PIL import Image
+        processor, model = load_blip_model()
+        
+        print(f"  Describing: {os.path.basename(image_path)}")
+        image = Image.open(image_path).convert('RGB')
+        inputs = processor(image, return_tensors="pt")
+        
+        output = model.generate(**inputs, max_length=100)
+        description = processor.decode(output[0], skip_special_tokens=True)
+        
+        return description
+    except Exception as e:
+        print(f"  Error describing image: {e}")
+        return None
 
 def load_config() -> Dict[str, Any]:
     config_path = Path(SESSIONS_DIR) / CONFIG_FILE
@@ -442,6 +475,64 @@ def transcribe_media(messages: List[Dict[str, Any]], output_dir: str, config: Di
             if msg['media']['filename'] in existing_transcriptions:
                 msg['media']['transcription'] = existing_transcriptions[msg['media']['filename']]
 
+def describe_images(messages: List[Dict[str, Any]], output_dir: str, language: Optional[str] = None) -> None:
+    print(f"\n{'='*60}")
+    print("PHASE 2b: Describing images")
+    print(f"{'='*60}")
+    
+    media_dir = os.path.join(output_dir, MEDIA_DIR)
+    descriptions_file = os.path.join(output_dir, "descriptions.json")
+    
+    existing_descriptions = {}
+    if os.path.exists(descriptions_file):
+        try:
+            with open(descriptions_file, 'r', encoding='utf-8') as f:
+                existing_descriptions = json.load(f)
+            print(f"  Loaded {len(existing_descriptions)} existing descriptions")
+        except:
+            pass
+    
+    images_to_describe = []
+    for msg in messages:
+        if msg.get('media') and msg['media']['type'] == 'photo':
+            if msg['media']['filename'] in existing_descriptions:
+                msg['media']['description'] = existing_descriptions[msg['media']['filename']]
+            else:
+                images_to_describe.append(msg['media'])
+    
+    if not images_to_describe and not existing_descriptions:
+        print("  No images to describe.")
+        return
+    
+    if images_to_describe:
+        print(f"  Found {len(images_to_describe)} images to describe\n")
+        
+        for i, img in enumerate(images_to_describe, 1):
+            print(f"[{i}/{len(images_to_describe)}] {img['filename']}")
+            
+            description = describe_image(img['path'], language)
+            
+            if description:
+                img['description'] = description
+                existing_descriptions[img['filename']] = description
+                print(f"  → {description[:80]}{'...' if len(description) > 80 else ''}")
+                
+                with open(descriptions_file, 'w', encoding='utf-8') as f:
+                    json.dump(existing_descriptions, f, ensure_ascii=False, indent=2)
+            else:
+                print("  → [Description failed]")
+            
+            print()
+        
+        print("  Image description complete!")
+    else:
+        print("  All image descriptions already exist. Skipping...")
+    
+    for msg in messages:
+        if msg.get('media') and msg['media']['type'] == 'photo':
+            if msg['media']['filename'] in existing_descriptions:
+                msg['media']['description'] = existing_descriptions[msg['media']['filename']]
+
 def get_sender_name(sender) -> str:
     if hasattr(sender, 'first_name'):
         parts = [sender.first_name or ""]
@@ -469,77 +560,107 @@ def generate_html(messages: List[Dict], participants: Dict[int, str], output_pat
         }}
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background: #0e1621;
-            color: #fff;
+            background: #ece5dd;
+            color: #303030;
             line-height: 1.5;
         }}
         .container {{
             max-width: 900px;
             margin: 0 auto;
-            padding: 20px;
+            background: #fff;
+            min-height: 100vh;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
         }}
         .header {{
-            padding: 20px 0;
-            border-bottom: 1px solid #2b5278;
-            margin-bottom: 20px;
-        }}
-        .header h1 {{
-            font-size: 24px;
+            padding: 20px;
+            background: #075e54;
             color: #fff;
         }}
+        .header h1 {{
+            font-size: 22px;
+            font-weight: 500;
+        }}
         .header .info {{
-            color: #8e9ba7;
-            font-size: 14px;
+            color: rgba(255,255,255,0.7);
+            font-size: 13px;
             margin-top: 5px;
+        }}
+        .messages {{
+            padding: 20px;
+            background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23d4cfc4' fill-opacity='0.1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
         }}
         .message {{
             display: flex;
-            margin-bottom: 15px;
-            padding: 10px 0;
+            margin-bottom: 12px;
         }}
         .message.outgoing {{
-            flex-direction: row-reverse;
+            justify-content: flex-end;
         }}
         .avatar {{
-            width: 40px;
-            height: 40px;
+            width: 36px;
+            height: 36px;
             border-radius: 50%;
-            background: #2b5278;
+            background: #6b9bc3;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: bold;
+            font-weight: 600;
+            font-size: 14px;
+            color: #fff;
             flex-shrink: 0;
+            margin-right: 10px;
         }}
         .message.outgoing .avatar {{
-            background: #4fae4e;
+            background: #25d366;
+            margin-right: 0;
+            margin-left: 10px;
+            order: 2;
         }}
         .message-content {{
-            max-width: 70%;
-            margin: 0 10px;
+            max-width: 65%;
         }}
         .sender {{
-            font-size: 13px;
-            color: #54a3da;
-            margin-bottom: 4px;
+            font-size: 12px;
+            color: #128c7e;
+            margin-bottom: 3px;
+            font-weight: 500;
         }}
         .message.outgoing .sender {{
-            color: #4fae4e;
             text-align: right;
+            color: #075e54;
         }}
         .bubble {{
-            background: #182533;
-            padding: 10px 15px;
-            border-radius: 15px;
+            background: #fff;
+            padding: 8px 12px;
+            border-radius: 8px;
+            box-shadow: 0 1px 1px rgba(0,0,0,0.1);
             display: inline-block;
+            position: relative;
         }}
         .message.outgoing .bubble {{
-            background: #2b5278;
+            background: #dcf8c6;
+        }}
+        .bubble::before {{
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -8px;
+            width: 0;
+            height: 0;
+            border: 8px solid transparent;
+            border-right-color: #fff;
+            border-top: 0;
+        }}
+        .message.outgoing .bubble::before {{
+            left: auto;
+            right: -8px;
+            border-right-color: transparent;
+            border-left-color: #dcf8c6;
         }}
         .timestamp {{
             font-size: 11px;
-            color: #8e9ba7;
-            margin-top: 5px;
+            color: #667781;
+            margin-top: 4px;
         }}
         .message.outgoing .timestamp {{
             text-align: right;
@@ -547,43 +668,59 @@ def generate_html(messages: List[Dict], participants: Dict[int, str], output_pat
         .text {{
             white-space: pre-wrap;
             word-break: break-word;
+            color: #303030;
         }}
         .media {{
-            margin-top: 10px;
+            margin-top: 8px;
             max-width: 100%;
         }}
         .media img {{
-            max-width: 300px;
-            border-radius: 10px;
+            max-width: 100%;
+            border-radius: 8px;
             cursor: pointer;
         }}
         .media video {{
-            max-width: 300px;
-            border-radius: 10px;
+            max-width: 100%;
+            border-radius: 8px;
+        }}
+        .media audio {{
+            max-width: 100%;
         }}
         .media a {{
-            color: #54a3da;
+            color: #128c7e;
             text-decoration: none;
         }}
         .media a:hover {{
             text-decoration: underline;
         }}
-        .transcription {{
-            background: rgba(255,255,255,0.05);
-            padding: 8px 12px;
-            border-radius: 8px;
+        .description {{
             margin-top: 8px;
-            font-style: italic;
+            padding: 6px 10px;
+            background: rgba(0,0,0,0.03);
+            border-radius: 6px;
+            font-size: 12px;
+            color: #54656f;
+        }}
+        .description-label {{
+            font-weight: 500;
+            color: #128c7e;
+            margin-right: 5px;
+        }}
+        .transcription {{
+            margin-top: 8px;
+            padding: 6px 10px;
+            background: rgba(0,0,0,0.03);
+            border-radius: 6px;
             font-size: 13px;
-            color: #a7b5c3;
-            border-left: 3px solid #54a3da;
+            color: #54656f;
+            font-style: italic;
         }}
         .transcription-label {{
-            font-weight: bold;
-            color: #54a3da;
+            font-weight: 500;
+            color: #075e54;
             font-size: 11px;
             text-transform: uppercase;
-            margin-bottom: 4px;
+            margin-bottom: 3px;
         }}
         .lightbox {{
             display: none;
@@ -598,11 +735,20 @@ def generate_html(messages: List[Dict], participants: Dict[int, str], output_pat
             align-items: center;
         }}
         .lightbox img {{
-            max-width: 90%;
-            max-height: 90%;
+            max-width: 95%;
+            max-height: 95%;
         }}
         .lightbox.active {{
             display: flex;
+        }}
+        .lightbox-close {{
+            position: fixed;
+            top: 20px;
+            right: 30px;
+            font-size: 40px;
+            color: #fff;
+            cursor: pointer;
+            z-index: 1001;
         }}
     </style>
 </head>
@@ -617,6 +763,7 @@ def generate_html(messages: List[Dict], participants: Dict[int, str], output_pat
         </div>
     </div>
     <div class="lightbox" id="lightbox" onclick="closeLightbox()">
+        <span class="lightbox-close" onclick="closeLightbox()">&times;</span>
         <img id="lightbox-img" src="">
     </div>
     <script>
@@ -650,6 +797,10 @@ def generate_html(messages: List[Dict], participants: Dict[int, str], output_pat
                 media_html = f'''<div class="media">
                     <img src="{rel_path}" onclick="openLightbox('{rel_path}')" alt="Photo">
                 </div>'''
+                if m.get('description'):
+                    media_html += f'''<div class="description">
+                        <span class="description-label">📷</span> {m['description']}
+                    </div>'''
             elif m['type'] == 'video':
                 rel_path = os.path.join(MEDIA_DIR, m['filename'])
                 media_html = f'''<div class="media">
@@ -854,6 +1005,20 @@ async def main():
         messages = await download_messages(client, entity, str(output_dir), limit=limit, start_date=start_date, end_date=end_date)
         
         transcribe_media(messages, str(output_dir), config)
+        
+        # Load detected language from transcriptions or detect from first image
+        descriptions_file = output_dir / "descriptions.json"
+        detected_language = None
+        transcriptions_file = output_dir / "transcriptions.json"
+        if transcriptions_file.exists():
+            try:
+                with open(transcriptions_file, 'r') as f:
+                    trans_data = json.load(f)
+                    # Language was used for transcription, we'll use same for descriptions
+            except:
+                pass
+        
+        describe_images(messages, str(output_dir), language=detected_language)
         
         participants = {}
         async for msg in client.iter_messages(entity, limit=min(len(messages), 100)):
