@@ -9,6 +9,7 @@ import sys
 import json
 import asyncio
 import mimetypes
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -20,8 +21,153 @@ import whisper
 MEDIA_DIR = "media"
 OUTPUT_FILE = "chat_export.html"
 SESSIONS_DIR = "sessions"
+CONFIG_FILE = "config.json"
+
+TRANSCRIPTION_METHODS = {
+    "1": {"name": "tiny", "type": "local", "speed": "Fastest", "quality": "Lowest"},
+    "2": {"name": "base", "type": "local", "speed": "Fast", "quality": "Decent"},
+    "3": {"name": "small", "type": "local", "speed": "Medium", "quality": "Good"},
+    "4": {"name": "medium", "type": "local", "speed": "Slow (5x base)", "quality": "Very Good"},
+    "5": {"name": "large", "type": "local", "speed": "Slowest (10x base)", "quality": "Best"},
+    "6": {"name": "gemini-flash", "type": "api", "speed": "Fast", "quality": "Excellent", "provider": "gemini"},
+    "7": {"name": "gemini-pro", "type": "api", "speed": "Medium", "quality": "Excellent", "provider": "gemini"},
+    "8": {"name": "claude-sonnet", "type": "api", "speed": "Medium", "quality": "Excellent", "provider": "openrouter"},
+    "9": {"name": "claude-opus", "type": "api", "speed": "Slower", "quality": "Best", "provider": "openrouter"},
+}
+
+DEFAULT_METHOD = "3"
 
 model_cache = {}
+
+def load_config() -> Dict[str, Any]:
+    config_path = Path(SESSIONS_DIR) / CONFIG_FILE
+    if config_path.exists():
+        try:
+            with open(config_path, 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    return {"transcription_method": DEFAULT_METHOD}
+
+def save_config(config: Dict[str, Any]):
+    config_path = Path(SESSIONS_DIR) / CONFIG_FILE
+    config_path.parent.mkdir(exist_ok=True)
+    with open(config_path, 'w') as f:
+        json.dump(config, f, indent=2)
+
+def select_transcription_method(config: Dict[str, Any]) -> str:
+    current = config.get("transcription_method", DEFAULT_METHOD)
+    
+    print("\n" + "="*60)
+    print("TRANSCRIPTION METHOD")
+    print("="*60)
+    print("\nLocal Whisper (free, runs on your machine):")
+    for key in ["1", "2", "3", "4", "5"]:
+        m = TRANSCRIPTION_METHODS[key]
+        print(f"  {key}. {m['name']:8} - {m['quality']:10} quality, {m['speed']}")
+    
+    print("\nCloud API (requires API key):")
+    for key in ["6", "7", "8", "9"]:
+        m = TRANSCRIPTION_METHODS[key]
+        cost = "~$0.008/min" if m['provider'] == 'openrouter' else "~$0.075/min"
+        print(f"  {key}. {m['name']:12} - {m['quality']:10} quality, {m['speed']}, {cost}")
+    
+    print(f"\nCurrent: {TRANSCRIPTION_METHODS[current]['name']}")
+    choice = input(f"Select [1-9] (default: {current}): ").strip()
+    
+    if choice in TRANSCRIPTION_METHODS:
+        config["transcription_method"] = choice
+        save_config(config)
+        return choice
+    return current
+
+def get_api_key(provider: str, config: Dict[str, Any]) -> str:
+    key_names = {
+        "gemini": "GEMINI_API_KEY",
+        "openrouter": "OPENROUTER_API_KEY", 
+    }
+    
+    key_name = key_names.get(provider, f"{provider.upper()}_API_KEY")
+    config_key = f"{provider}_api_key"
+    
+    if config.get(config_key):
+        return config[config_key]
+    
+    env_key = os.environ.get(key_name)
+    if env_key:
+        return env_key
+    
+    print(f"\n{key_name} required for {provider}.")
+    print(f"Get it from:")
+    if provider == "gemini":
+        print("  https://aistudio.google.com/app/apikey")
+    elif provider == "openrouter":
+        print("  https://openrouter.ai/keys")
+    
+    api_key = input(f"\nEnter {key_name}: ").strip()
+    if api_key:
+        config[config_key] = api_key
+        save_config(config)
+    return api_key
+
+def transcribe_with_gemini(file_path: str, language: Optional[str], api_key: str) -> Optional[str]:
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        with open(file_path, 'rb') as f:
+            audio_data = f.read()
+        
+        prompt = "Transcribe this audio. Output only the transcribed text."
+        if language:
+            prompt = f"Transcribe this {language} audio. Output only the transcribed text."
+        
+        response = model.generate_content([
+            {"mime_type": "audio/ogg", "data": audio_data},
+            prompt
+        ])
+        
+        return response.text.strip()
+    except Exception as e:
+        print(f"  Gemini error: {e}")
+        return None
+
+def transcribe_with_openrouter(file_path: str, language: Optional[str], model: str, api_key: str) -> Optional[str]:
+    try:
+        import base64
+        import requests
+        
+        with open(file_path, 'rb') as f:
+            audio_base64 = base64.b64encode(f.read()).decode()
+        
+        prompt = "Transcribe this audio. Output only the transcribed text."
+        if language:
+            prompt = f"Transcribe this {language} audio. Output only the transcribed text."
+        
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={
+                "model": model,
+                "messages": [{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:audio/ogg;base64,{audio_base64}"}}
+                    ]
+                }]
+            }
+        )
+        
+        if response.status_code == 200:
+            return response.json()["choices"][0]["message"]["content"].strip()
+        print(f"  OpenRouter error: {response.status_code} - {response.text}")
+        return None
+    except Exception as e:
+        print(f"  OpenRouter error: {e}")
+        return None
 
 def load_whisper_model(model_size: str = "base"):
     if model_size not in model_cache:
@@ -184,10 +330,14 @@ async def download_messages(
     
     return messages_data
 
-def transcribe_media(messages: List[Dict[str, Any]], output_dir: str) -> None:
+def transcribe_media(messages: List[Dict[str, Any]], output_dir: str, config: Dict[str, Any]) -> None:
     print(f"\n{'='*60}")
     print("PHASE 2: Transcribing voice and video messages")
     print(f"{'='*60}")
+    
+    method_key = config.get("transcription_method", DEFAULT_METHOD)
+    method_info = TRANSCRIPTION_METHODS[method_key]
+    print(f"  Method: {method_info['name']} ({method_info['quality']} quality)")
     
     media_dir = os.path.join(output_dir, MEDIA_DIR)
     transcriptions_file = os.path.join(output_dir, "transcriptions.json")
@@ -219,41 +369,62 @@ def transcribe_media(messages: List[Dict[str, Any]], output_dir: str) -> None:
         print(f"  Found {len(media_to_transcribe)} voice/video messages to transcribe")
         
         detected_language = None
-        first_media = media_to_transcribe[0]
-        first_file = first_media['path']
-        if first_media['type'] == 'video':
-            first_file = first_file.rsplit('.', 1)[0] + "_audio.wav"
-            extract_audio_from_video(first_media['path'], first_file)
-        
-        detected_language = detect_language(first_file, "base")
-        
-        if first_media['type'] == 'video':
-            try:
-                os.remove(first_file)
-            except:
-                pass
+        if method_info['type'] == 'local':
+            first_media = media_to_transcribe[0]
+            first_file = first_media['path']
+            if first_media['type'] == 'video':
+                first_file = first_file.rsplit('.', 1)[0] + "_audio.wav"
+                extract_audio_from_video(first_media['path'], first_file)
+            
+            detected_language = detect_language(first_file, method_info['name'])
+            
+            if first_media['type'] == 'video':
+                try:
+                    os.remove(first_file)
+                except:
+                    pass
         
         print()
+        
+        api_key = None
+        if method_info['type'] == 'api':
+            api_key = get_api_key(method_info['provider'], config)
         
         for i, m in enumerate(media_to_transcribe, 1):
             print(f"[{i}/{len(media_to_transcribe)}] {m['filename']}")
             
+            file_path = m['path']
             if m['type'] == 'video':
                 audio_path = m['path'].rsplit('.', 1)[0] + "_audio.wav"
                 if extract_audio_from_video(m['path'], audio_path):
-                    m['transcription'] = transcribe_audio(audio_path, "base", language=detected_language)
-                    try:
-                        os.remove(audio_path)
-                    except:
-                        pass
+                    file_path = audio_path
                 else:
                     m['transcription'] = None
-            else:
-                m['transcription'] = transcribe_audio(m['path'], "base", language=detected_language)
+                    print("  → [Audio extraction failed]")
+                    continue
+            
+            if method_info['type'] == 'local':
+                m['transcription'] = transcribe_audio(file_path, method_info['name'], language=detected_language)
+            elif method_info['provider'] == 'gemini':
+                m['transcription'] = transcribe_with_gemini(file_path, detected_language, api_key)
+            elif method_info['provider'] == 'openrouter':
+                model_map = {
+                    "claude-sonnet": "anthropic/claude-3.5-sonnet",
+                    "claude-opus": "anthropic/claude-3-opus",
+                }
+                model = model_map.get(method_info['name'], "anthropic/claude-3.5-sonnet")
+                m['transcription'] = transcribe_with_openrouter(file_path, detected_language, model, api_key)
+            
+            if m['type'] == 'video':
+                try:
+                    os.remove(file_path)
+                except:
+                    pass
             
             if m['transcription']:
                 existing_transcriptions[m['filename']] = m['transcription']
-                print(f"  → {m['transcription'][:100]}{'...' if len(m['transcription']) > 100 else ''}")
+                text_preview = m['transcription'][:100] + ('...' if len(m['transcription']) > 100 else '')
+                print(f"  → {text_preview}")
                 
                 with open(transcriptions_file, 'w', encoding='utf-8') as f:
                     json.dump(existing_transcriptions, f, ensure_ascii=False, indent=2)
@@ -574,6 +745,8 @@ async def main():
     sessions_dir = Path(SESSIONS_DIR)
     sessions_dir.mkdir(exist_ok=True)
     
+    config = load_config()
+    
     session_files = list(sessions_dir.glob("*.session"))
     
     if session_files:
@@ -627,6 +800,8 @@ async def main():
         await client.start()
     
     try:
+        select_transcription_method(config)
+        
         entity = await select_chat(client)
         if not entity:
             print("No chat selected. Exiting.")
@@ -678,7 +853,7 @@ async def main():
         
         messages = await download_messages(client, entity, str(output_dir), limit=limit, start_date=start_date, end_date=end_date)
         
-        transcribe_media(messages, str(output_dir))
+        transcribe_media(messages, str(output_dir), config)
         
         participants = {}
         async for msg in client.iter_messages(entity, limit=min(len(messages), 100)):
