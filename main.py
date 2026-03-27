@@ -159,6 +159,12 @@ async def download_messages(
             print(f"  Progress: {len(messages_data)} messages processed")
     
     print(f"\n  Total messages: {len(messages_data)}")
+    
+    messages_file = os.path.join(output_dir, "messages.json")
+    with open(messages_file, 'w', encoding='utf-8') as f:
+        json.dump(messages_data, f, ensure_ascii=False, indent=2)
+    print(f"  Saved: {messages_file}")
+    
     return messages_data
 
 def transcribe_media(messages: List[Dict[str, Any]], output_dir: str) -> None:
