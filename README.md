@@ -15,6 +15,7 @@ Export your Telegram chat history with automatic transcription of voice and vide
 ## Requirements
 
 - Python 3.8+
+- python3-venv (on Debian/Ubuntu: `sudo apt install python3-venv`)
 - Telegram API credentials (get from https://my.telegram.org/apps)
 - ffmpeg (for video audio extraction)
 
@@ -25,8 +26,11 @@ Export your Telegram chat history with automatic transcription of voice and vide
 git clone https://github.com/YOUR_USERNAME/telegram-archive-tool.git
 cd telegram-archive-tool
 
+# Install Python venv (Debian/Ubuntu)
+sudo apt install python3-venv
+
 # Create virtual environment
-python -m venv venv
+python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
@@ -43,7 +47,7 @@ brew install ffmpeg
 ## Usage
 
 ```bash
-python main.py
+python3 main.py```
 ```
 
 On first run, you'll be prompted for:
