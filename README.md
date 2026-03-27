@@ -14,10 +14,69 @@ Export your Telegram chat history with automatic transcription of voice and vide
 
 ## Requirements
 
-- Python 3.8+
-- python3-venv (on Debian/Ubuntu: `sudo apt install python3-venv`)
-- Telegram API credentials (get from https://my.telegram.org/apps)
-- ffmpeg (for video audio extraction)
+- **Python 3.8+** (with venv module)
+- **ffmpeg** (for video audio extraction)
+- **Telegram API credentials** (get from https://my.telegram.org/apps)
+
+## Installing Prerequisites
+
+### Python 3
+
+**Ubuntu/Debian:**
+```bash
+sudo apt update
+sudo apt install python3 python3-venv python3-pip
+```
+
+**macOS (using Homebrew):**
+```bash
+brew install python3
+```
+
+**Fedora/RHEL:**
+```bash
+sudo dnf install python3 python3-pip
+```
+
+**Arch Linux:**
+```bash
+sudo pacman -S python python-pip
+```
+
+**Windows:**
+Download from https://www.python.org/downloads/ (includes venv by default)
+
+### ffmpeg
+
+**Ubuntu/Debian:**
+```bash
+sudo apt install ffmpeg
+```
+
+**macOS (using Homebrew):**
+```bash
+brew install ffmpeg
+```
+
+**Fedora/RHEL:**
+```bash
+sudo dnf install ffmpeg
+```
+
+**Arch Linux:**
+```bash
+sudo pacman -S ffmpeg
+```
+
+**Windows:**
+Download from https://ffmpeg.org/download.html and add to PATH
+
+### Verify Installation
+
+```bash
+python3 --version   # Should show Python 3.8+
+ffmpeg -version     # Should show ffmpeg version
+```
 
 ## Installation
 
@@ -26,28 +85,18 @@ Export your Telegram chat history with automatic transcription of voice and vide
 git clone https://github.com/YOUR_USERNAME/telegram-archive-tool.git
 cd telegram-archive-tool
 
-# Install Python venv (Debian/Ubuntu)
-sudo apt install python3-venv
-
 # Create virtual environment
 python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
-
-# Install ffmpeg (if not already installed)
-# Ubuntu/Debian:
-sudo apt install ffmpeg
-
-# macOS:
-brew install ffmpeg
 ```
 
 ## Usage
 
 ```bash
-python3 main.py```
+python3 main.py
 ```
 
 On first run, you'll be prompted for:
