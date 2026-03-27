@@ -222,13 +222,13 @@ def transcribe_media(messages: List[Dict[str, Any]], output_dir: str) -> None:
             if m['transcription']:
                 existing_transcriptions[m['filename']] = m['transcription']
                 print(f"  → {m['transcription'][:100]}{'...' if len(m['transcription']) > 100 else ''}")
+                
+                with open(transcriptions_file, 'w', encoding='utf-8') as f:
+                    json.dump(existing_transcriptions, f, ensure_ascii=False, indent=2)
             else:
                 print("  → [Transcription failed]")
             
             print()
-        
-        with open(transcriptions_file, 'w', encoding='utf-8') as f:
-            json.dump(existing_transcriptions, f, ensure_ascii=False, indent=2)
         
         print("  Transcription complete!")
     else:
