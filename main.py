@@ -204,7 +204,7 @@ def transcribe_media(messages: List[Dict[str, Any]], output_dir: str) -> None:
         print(f"  Found {len(media_to_transcribe)} voice/video messages to transcribe\n")
         
         for i, m in enumerate(media_to_transcribe, 1):
-            print(f"[{i}/{len(media_to_transcribe)}] Processing: {m['filename']}")
+            print(f"[{i}/{len(media_to_transcribe)}] {m['filename']}")
             
             if m['type'] == 'video':
                 audio_path = m['path'].rsplit('.', 1)[0] + "_audio.wav"
@@ -221,6 +221,9 @@ def transcribe_media(messages: List[Dict[str, Any]], output_dir: str) -> None:
             
             if m['transcription']:
                 existing_transcriptions[m['filename']] = m['transcription']
+                print(f"  → {m['transcription'][:100]}{'...' if len(m['transcription']) > 100 else ''}")
+            else:
+                print("  → [Transcription failed]")
             
             print()
         
