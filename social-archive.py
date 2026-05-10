@@ -201,11 +201,35 @@ def load_signal_export(chat_dir: Path) -> Tuple[List[Dict[str, Any]], Dict[int, 
     return messages, participants
 
 
+SIGNAL_SOURCE_CANDIDATES = [
+    Path.home() / ".config" / "Signal",                                               # standard deb/apt
+    Path.home() / ".var" / "app" / "org.signal.Signal" / "config" / "Signal",        # flatpak
+    Path.home() / "snap" / "signal-desktop" / "current" / ".config" / "Signal",      # snap
+    Path.home() / "Library" / "Application Support" / "Signal",                       # macOS
+]
+
+
+def detect_signal_source() -> Optional[Path]:
+    for candidate in SIGNAL_SOURCE_CANDIDATES:
+        if (candidate / "config.json").exists():
+            return candidate
+    return None
+
+
 def run_sigexport(export_dir: Path, source: Optional[str] = None) -> None:
     if not shutil.which("sigexport"):
         print("Error: sigexport not found. Run:  pip install signal-export")
         sys.exit(1)
     export_dir.mkdir(parents=True, exist_ok=True)
+
+    if not source:
+        detected = detect_signal_source()
+        if detected:
+            print(f"  Detected Signal config: {detected}")
+            source = str(detected)
+        else:
+            print("  Warning: could not auto-detect Signal config dir. Use --signal-source if export fails.")
+
     print(f"\nRunning sigexport → {export_dir}")
     cmd = ["sigexport", "--overwrite", str(export_dir)]
     if source:
