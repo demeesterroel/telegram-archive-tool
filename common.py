@@ -6,6 +6,7 @@ Handles config, transcription (local Whisper + cloud APIs), image description, a
 import os
 import json
 import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -235,13 +236,37 @@ def detect_language(file_path: str, model_size: str = "base") -> Optional[str]:
 
 def transcribe_audio(file_path: str, model_size: str = "base", language: Optional[str] = None) -> Optional[str]:
     try:
+        import torch
         model = load_whisper_model(model_size)
         print(f"  Transcribing: {os.path.basename(file_path)}")
-        result = model.transcribe(file_path, language=language)
+        result = model.transcribe(file_path, language=language, fp16=torch.cuda.is_available())
         return result["text"].strip()
     except Exception as e:
         print(f"  Error transcribing {file_path}: {e}")
         return None
+
+
+def get_audio_duration(file_path: str) -> float:
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "csv=p=0", file_path],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return float(result.stdout.strip())
+    except Exception:
+        pass
+    return 0.0
+
+
+def _fmt_secs(secs: float) -> str:
+    s = int(secs)
+    if s < 60:
+        return f"{s}s"
+    elif s < 3600:
+        return f"{s // 60}m {s % 60}s"
+    return f"{s // 3600}h {(s % 3600) // 60}m"
 
 
 def extract_audio_from_video(video_path: str, audio_path: str) -> bool:
@@ -314,6 +339,15 @@ def transcribe_media(messages: List[Dict[str, Any]], output_dir: str, config: Di
         if method_info["type"] == "api":
             api_key = get_api_key(method_info["provider"], config)
 
+        # Probe durations for ETA estimation
+        print("  Probing audio durations...", end="", flush=True)
+        durations: Dict[str, float] = {m["filename"]: get_audio_duration(m["path"]) for m in media_to_transcribe}
+        total_audio_secs = sum(durations.values())
+        print(f" total {_fmt_secs(total_audio_secs)} of audio\n")
+
+        done_audio_secs = 0.0
+        loop_start = time.time()
+
         for i, m in enumerate(media_to_transcribe, 1):
             print(f"[{i}/{len(media_to_transcribe)}] {m['filename']}")
 
@@ -354,7 +388,21 @@ def transcribe_media(messages: List[Dict[str, Any]], output_dir: str, config: Di
             else:
                 print("  → [Transcription failed]")
 
-            print()
+            # Progress bar + ETA
+            done_audio_secs += durations.get(m["filename"], 0)
+            elapsed = time.time() - loop_start
+            bar_len = 24
+            filled = int(bar_len * i / len(media_to_transcribe))
+            bar = "█" * filled + "░" * (bar_len - filled)
+            if elapsed > 0 and done_audio_secs > 0:
+                speed = done_audio_secs / elapsed  # audio-secs per wall-sec
+                remaining = total_audio_secs - done_audio_secs
+                eta = f"~{_fmt_secs(remaining / speed)}" if speed > 0 else "?"
+                speed_str = f"{speed:.1f}x realtime"
+            else:
+                eta = "?"
+                speed_str = ""
+            print(f"  [{bar}] {i}/{len(media_to_transcribe)}  {_fmt_secs(done_audio_secs)}/{_fmt_secs(total_audio_secs)} audio  ETA {eta}  {speed_str}\n")
 
         print("  Transcription complete!")
     else:
