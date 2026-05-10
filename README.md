@@ -82,12 +82,6 @@ python telegram-archive.py --session my_account --chat username123 --limit 500
 
 ## Signal
 
-### Additional requirements
-
-```bash
-pip install signal-export
-```
-
 Signal Desktop must be installed and have your message history.
 
 ### Usage
