@@ -201,13 +201,16 @@ def load_signal_export(chat_dir: Path) -> Tuple[List[Dict[str, Any]], Dict[int, 
     return messages, participants
 
 
-def run_sigexport(export_dir: Path) -> None:
+def run_sigexport(export_dir: Path, source: Optional[str] = None) -> None:
     if not shutil.which("sigexport"):
         print("Error: sigexport not found. Run:  pip install signal-export")
         sys.exit(1)
     export_dir.mkdir(parents=True, exist_ok=True)
     print(f"\nRunning sigexport → {export_dir}")
-    result = subprocess.run(["sigexport", "--overwrite", str(export_dir)], check=False)
+    cmd = ["sigexport", "--overwrite", str(export_dir)]
+    if source:
+        cmd += ["--source", source]
+    result = subprocess.run(cmd, check=False)
     if result.returncode != 0:
         print(f"Error: sigexport failed (exit {result.returncode}).")
         sys.exit(1)
@@ -243,7 +246,7 @@ def run_signal(args) -> None:
             print(f"Error: directory not found: {export_dir}")
             sys.exit(1)
     else:
-        run_sigexport(export_dir)
+        run_sigexport(export_dir, source=args.signal_source)
 
     chats = list_signal_chats(export_dir)
     if not chats:
@@ -588,6 +591,7 @@ Examples:
 
     # Signal-specific
     parser.add_argument("--export-dir", "-e", help="[Signal] Path to sigexport output (default: ./archive/signal/exports)")
+    parser.add_argument("--signal-source", help="[Signal] Path to Signal config dir (for flatpak: ~/.var/app/org.signal.Signal/config/Signal)")
     parser.add_argument("--skip-export", action="store_true", help="[Signal] Skip running sigexport")
 
     # Telegram-specific
