@@ -1,210 +1,180 @@
-# Telegram Chat Archive Tool
+# Chat Archive Tool
 
-Export your Telegram chat history with automatic transcription of voice and video messages using OpenAI Whisper.
+Export Telegram and Signal chat history to a browsable HTML archive with automatic voice transcription and image descriptions.
 
 ## Features
 
-- Export all text messages from any Telegram chat
-- Download all media (photos, videos, voice notes, documents)
-- Automatic transcription of voice notes using local Whisper
-- Automatic transcription of video audio using local Whisper
-- Beautiful HTML output with media viewer
-- Works with private chats, groups, and channels
-- Session management (login once, reuse for future exports)
+- WhatsApp-style HTML output with media viewer
+- Automatic transcription of voice notes and video audio
+- Automatic image descriptions using BLIP (local AI, no API)
+- Language auto-detection for better transcription accuracy
+- Caches transcriptions and descriptions — resumable runs
+
+---
 
 ## Requirements
 
-- **Python 3.8+** (with venv module)
-- **ffmpeg** (for video audio extraction)
-- **Telegram API credentials** (get from https://my.telegram.org/apps)
+- **Python 3.8+**
+- **ffmpeg** (for audio extraction)
 
-## Installing Prerequisites
+### Install ffmpeg
 
-### Python 3
+| OS | Command |
+|----|---------|
+| Ubuntu/Debian | `sudo apt install ffmpeg` |
+| macOS | `brew install ffmpeg` |
+| Fedora | `sudo dnf install ffmpeg` |
+| Arch | `sudo pacman -S ffmpeg` |
+| Windows | Download from https://ffmpeg.org/download.html and add to PATH |
 
-**Ubuntu/Debian:**
-```bash
-sudo apt update
-sudo apt install python3 python3-venv python3-pip
-```
-
-**macOS (using Homebrew):**
-```bash
-brew install python3
-```
-
-**Fedora/RHEL:**
-```bash
-sudo dnf install python3 python3-pip
-```
-
-**Arch Linux:**
-```bash
-sudo pacman -S python python-pip
-```
-
-**Windows:**
-Download from https://www.python.org/downloads/ (includes venv by default)
-
-### ffmpeg
-
-**Ubuntu/Debian:**
-```bash
-sudo apt install ffmpeg
-```
-
-**macOS (using Homebrew):**
-```bash
-brew install ffmpeg
-```
-
-**Fedora/RHEL:**
-```bash
-sudo dnf install ffmpeg
-```
-
-**Arch Linux:**
-```bash
-sudo pacman -S ffmpeg
-```
-
-**Windows:**
-Download from https://ffmpeg.org/download.html and add to PATH
-
-### Verify Installation
+### Install Python dependencies
 
 ```bash
-python3 --version   # Should show Python 3.8+
-ffmpeg -version     # Should show ffmpeg version
-```
-
-## Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/YOUR_USERNAME/telegram-archive-tool.git
+git clone https://github.com/demeesterroel/telegram-archive-tool.git
 cd telegram-archive-tool
-
-# Create virtual environment
 python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## Usage
+---
+
+## Telegram
+
+### Additional requirements
+
+- Telegram API credentials — get from https://my.telegram.org/apps
+
+### Usage
 
 ```bash
-python3 main.py
+python telegram-archive.py
 ```
 
-On first run, you'll be prompted for:
-1. **API ID** - Get from https://my.telegram.org/apps
-2. **API Hash** - Get from https://my.telegram.org/apps
-3. **Phone number** - Your Telegram phone number with country code
-4. **Session name** - A name for this session (e.g., "my_account")
+Interactive mode prompts for API credentials on first run, then lets you pick a chat.
 
-After authentication, select the chat you want to export from the list, or paste a username/ID directly.
-
-## Output
-
-The tool creates an `exports/` directory containing:
-- `chat_export.html` - WhatsApp-style browsable archive
-- `messages.json` - Raw text messages (saved immediately)
-- `transcriptions.json` - Cached voice/video transcriptions
-- `descriptions.json` - Cached image descriptions
-- `media/` - Downloaded photos, videos, voice notes, documents
-
-### Features:
-- **WhatsApp-style design** - Light background, green outgoing bubbles, white incoming
-- **Transcriptions** - Voice notes and videos transcribed automatically
-- **Image descriptions** - Photos described using BLIP AI model
-- **Language detection** - Auto-detects Dutch/English/etc. for better transcription
-
-## Image Descriptions
-
-Photos are automatically described using BLIP (Bootstrapping Language-Image Pre-training):
-- Runs locally on your machine (no API calls)
-- First run downloads ~1GB model
-- Descriptions cached in `descriptions.json`
-
-To skip image descriptions, press Ctrl+C during "PHASE 2b".
-
-## Transcription Options
-
-At startup, you'll choose a transcription method:
-
-### Local Whisper (Free, runs on your machine)
-
-| Model | Speed | Quality | Best For |
-|-------|-------|---------|----------|
-| tiny | Fastest | Lowest | Quick tests |
-| base | Fast | Decent | Default |
-| **small** | Medium | Good | **Recommended for Dutch** |
-| medium | Slow (5x) | Very Good | Better accuracy |
-| large | Slowest (10x) | Best | Maximum quality |
-
-### Cloud API (Requires API key, faster)
-
-| Provider | Model | Cost | Quality |
-|----------|-------|------|---------|
-| Google Gemini | gemini-flash | ~$0.075/min | Excellent |
-| Google Gemini | gemini-pro | ~$0.075/min | Excellent |
-| OpenRouter | claude-sonnet | ~$0.008/min | Excellent |
-| OpenRouter | claude-opus | ~$0.008/min | Best |
-
-**API Keys:**
-- **Gemini**: Get from https://aistudio.google.com/app/apikey
-- **OpenRouter**: Get from https://openrouter.ai/keys
-
-Keys are stored in `sessions/config.json` or set as environment variables:
+**Non-interactive:**
 ```bash
-export GEMINI_API_KEY=your_key
-export OPENROUTER_API_KEY=your_key
+python telegram-archive.py --session my_account --chat "Jane Doe"
+python telegram-archive.py --session my_account --chat "Jane Doe" --start-date 2024-01-01
+python telegram-archive.py --session my_account --chat username123 --limit 500
 ```
 
-**Note:** OpenAI Whisper API is not included due to ethical concerns. See [QuitGPT](https://quitgpt.org/) for more information.
+**Options:**
 
-### Language Detection
+| Flag | Description |
+|------|-------------|
+| `--session`, `-s` | Session name (login once, reuse later) |
+| `--chat`, `-c` | Chat name, username, phone number, or ID |
+| `--start-date` | Start date `YYYY-MM-DD` (inclusive) |
+| `--end-date` | End date `YYYY-MM-DD` (inclusive, default: today) |
+| `--limit` | Max number of messages to fetch |
+| `--transcription`, `-t` | Transcription method (see below) |
 
-For local Whisper, the tool auto-detects the language from the first audio file and uses it for all transcriptions. This improves accuracy for non-English languages like Dutch.
-
-## Privacy & Security
-
-- All data is stored locally on your machine
-- Session files contain authentication data - never share them
-- Local Whisper runs entirely on your machine
-- Cloud API keys are stored locally in `sessions/config.json`
-- Exported files are private - use `.gitignore` to prevent accidental commits
-
-## Getting Telegram API Credentials
+### Getting API credentials
 
 1. Go to https://my.telegram.org/apps
 2. Log in with your phone number
 3. Create a new application
-4. You'll receive an `api_id` and `api_hash`
-5. Keep these credentials safe and never share them
+4. Copy your `api_id` and `api_hash`
 
-## Troubleshooting
+---
 
-### "FloodWaitError"
-Telegram has rate limits. Wait a few minutes and try again.
+## Signal
 
-### Large chats take forever
-Use the message limit option when prompted to export only recent messages.
+### Additional requirements
 
-### Whisper is slow
-Use a smaller model (`tiny` or `base`) or consider using a GPU-enabled machine.
+```bash
+pip install signal-export
+```
+
+Signal Desktop must be installed and have your message history.
+
+### Usage
+
+```bash
+python signal-archive.py
+```
+
+Runs `sigexport` automatically to extract messages, then prompts for a chat to archive.
+
+**Non-interactive:**
+```bash
+python signal-archive.py --chat "Jane Doe"
+python signal-archive.py --chat "Jane Doe" --export-dir ~/my-signal-export
+python signal-archive.py --skip-export --chat "Jane Doe"  # reuse existing export
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--export-dir`, `-e` | Path to sigexport output (default: `~/signal-export`) |
+| `--chat`, `-c` | Chat name (directory name inside export dir) |
+| `--skip-export`, `-s` | Skip running sigexport, use existing export as-is |
+| `--transcription`, `-t` | Transcription method (see below) |
+
+---
+
+## Output
+
+Both scripts write to `archive/<platform>/<chat-name>/`:
+
+| File | Contents |
+|------|----------|
+| `signal_archive.html` / `chat_export.html` | Browsable HTML archive |
+| `transcriptions.json` | Cached voice/video transcriptions |
+| `descriptions.json` | Cached image descriptions |
+| `media/` | Downloaded photos, videos, voice notes, documents |
+
+---
+
+## Transcription Options
+
+Choose at startup with `--transcription` / `-t`:
+
+### Local Whisper (free, runs on your machine)
+
+| Option | Model | Speed | Quality |
+|--------|-------|-------|---------|
+| `1` | tiny | Fastest | Lowest |
+| `2` | base | Fast | Decent |
+| `3` | small | Medium | Good — recommended for Dutch |
+| `4` | medium | Slow | Very Good |
+| `5` | large | Slowest | Best |
+
+### Cloud API (requires API key)
+
+| Option | Provider | Model | Quality |
+|--------|----------|-------|---------|
+| `6` | Google Gemini | gemini-flash | Excellent |
+| `7` | Google Gemini | gemini-pro | Excellent |
+
+**API keys** — stored in `sessions/config.json` or as environment variables:
+```bash
+export GEMINI_API_KEY=your_key
+```
+
+---
+
+## Image Descriptions
+
+Photos are described automatically using BLIP (local model, no API):
+- First run downloads ~1GB model
+- Results cached in `descriptions.json`
+- Skip with Ctrl+C during "PHASE 2b"
+
+---
+
+## Privacy & Security
+
+- All data stored locally
+- Session files contain auth tokens — never share or commit them
+- Local Whisper and BLIP run entirely on your machine
+- `archive/` and `sessions/` are in `.gitignore`
+
+---
 
 ## License
 
-MIT License - See LICENSE file for details.
-
-## Disclaimer
-
-This is an unofficial tool and is not affiliated with Telegram. Use responsibly and respect others' privacy when exporting conversations.
-
-## Contributing
-
-Contributions are welcome! Please open an issue or submit a pull request.
+MIT — see LICENSE file.
