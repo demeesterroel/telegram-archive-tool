@@ -304,7 +304,7 @@ def run_signal(args) -> None:
 
     media_link = output_dir / "media"
     media_source = chat_dir / "media"
-    if media_source.exists() and not media_link.exists():
+    if media_source.exists() and not media_link.exists() and not media_link.is_symlink():
         os.symlink(media_source.resolve(), media_link)
 
     resolve_transcription(config, args.transcription)
