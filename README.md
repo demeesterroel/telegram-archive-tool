@@ -39,25 +39,54 @@ pip install -r requirements.txt
 
 ---
 
-## Telegram
-
-### Additional requirements
-
-- Telegram API credentials — get from https://my.telegram.org/apps
-
-### Usage
+## Usage
 
 ```bash
-python telegram-archive.py
+python social-archive.py
 ```
 
-Interactive mode prompts for API credentials on first run, then lets you pick a chat.
+Interactive mode — prompts for platform, then chat. Or specify everything via flags:
 
-**Non-interactive:**
 ```bash
-python telegram-archive.py --session my_account --chat "Jane Doe"
-python telegram-archive.py --session my_account --chat "Jane Doe" --start-date 2024-01-01
-python telegram-archive.py --session my_account --chat username123 --limit 500
+python social-archive.py signal   [options]
+python social-archive.py telegram [options]
+```
+
+---
+
+## Signal
+
+Signal Desktop must be installed and have your message history.
+
+Runs `sigexport` automatically before prompting for a chat.
+
+```bash
+python social-archive.py signal
+python social-archive.py signal --chat "Jane Doe"
+python social-archive.py signal --chat "Jane Doe" --export-dir ~/my-signal-export
+python social-archive.py signal --skip-export --chat "Jane Doe"
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--chat`, `-c` | Chat name (directory name in export dir) |
+| `--export-dir`, `-e` | Path to sigexport output (default: `~/signal-export`) |
+| `--skip-export` | Skip running sigexport, use existing export as-is |
+| `--transcription`, `-t` | Transcription method (see below) |
+
+---
+
+## Telegram
+
+Requires API credentials — get from https://my.telegram.org/apps.
+
+```bash
+python social-archive.py telegram
+python social-archive.py telegram --session my_account --chat "Jane Doe"
+python social-archive.py telegram --session my_account --chat "Jane Doe" --start-date 2024-01-01
+python social-archive.py telegram --session my_account --chat username123 --limit 500
 ```
 
 **Options:**
@@ -80,39 +109,9 @@ python telegram-archive.py --session my_account --chat username123 --limit 500
 
 ---
 
-## Signal
-
-Signal Desktop must be installed and have your message history.
-
-### Usage
-
-```bash
-python signal-archive.py
-```
-
-Runs `sigexport` automatically to extract messages, then prompts for a chat to archive.
-
-**Non-interactive:**
-```bash
-python signal-archive.py --chat "Jane Doe"
-python signal-archive.py --chat "Jane Doe" --export-dir ~/my-signal-export
-python signal-archive.py --skip-export --chat "Jane Doe"  # reuse existing export
-```
-
-**Options:**
-
-| Flag | Description |
-|------|-------------|
-| `--export-dir`, `-e` | Path to sigexport output (default: `~/signal-export`) |
-| `--chat`, `-c` | Chat name (directory name inside export dir) |
-| `--skip-export`, `-s` | Skip running sigexport, use existing export as-is |
-| `--transcription`, `-t` | Transcription method (see below) |
-
----
-
 ## Output
 
-Both scripts write to `archive/<platform>/<chat-name>/`:
+Writes to `archive/<platform>/<chat-name>/`:
 
 | File | Contents |
 |------|----------|
@@ -153,7 +152,7 @@ export GEMINI_API_KEY=your_key
 
 ## Image Descriptions
 
-Photos are described automatically using BLIP (local model, no API):
+Photos described automatically using BLIP (local model, no API):
 - First run downloads ~1GB model
 - Results cached in `descriptions.json`
 - Skip with Ctrl+C during "PHASE 2b"
