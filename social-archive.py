@@ -40,6 +40,74 @@ ME_SENDER_ID = 1
 OTHER_SENDER_ID_START = 1_000_000_001
 
 
+# ─── Shared helpers ───────────────────────────────────────────────────────────
+
+def parse_date_args(start_str: Optional[str], end_str: Optional[str]) -> Tuple[Optional[datetime], Optional[datetime]]:
+    """Parse YYYY-MM-DD strings into UTC-aware datetimes. end_dt set to 23:59:59."""
+    start_dt = None
+    end_dt = None
+    if start_str:
+        try:
+            start_dt = datetime.strptime(start_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except ValueError:
+            print(f"Invalid start date '{start_str}', ignoring.")
+    if end_str:
+        try:
+            end_dt = datetime.strptime(end_str, "%Y-%m-%d").replace(
+                hour=23, minute=59, second=59, tzinfo=timezone.utc
+            )
+        except ValueError:
+            print(f"Invalid end date '{end_str}', using today.")
+            end_dt = datetime.now(timezone.utc)
+    return start_dt, end_dt
+
+
+def filter_messages(
+    messages: List[Dict[str, Any]],
+    start_dt: Optional[datetime],
+    end_dt: Optional[datetime],
+    limit: Optional[int],
+) -> List[Dict[str, Any]]:
+    if start_dt or end_dt:
+        filtered = []
+        for msg in messages:
+            try:
+                d = datetime.fromisoformat(str(msg["date"]).replace("Z", "+00:00"))
+                if not d.tzinfo:
+                    d = d.replace(tzinfo=timezone.utc)
+                if start_dt and d < start_dt:
+                    continue
+                if end_dt and d > end_dt:
+                    continue
+            except Exception:
+                pass
+            filtered.append(msg)
+        print(f"  After date filter: {len(filtered)} messages")
+        messages = filtered
+    if limit:
+        messages = messages[-limit:]
+        print(f"  After limit: {len(messages)} messages")
+    return messages
+
+
+def run_pipeline(
+    messages: List[Dict[str, Any]],
+    participants: Dict[int, str],
+    output_dir: Path,
+    output_file: Path,
+    chat_name: str,
+    app_name: str,
+    config: Dict[str, Any],
+) -> None:
+    transcribe_media(messages, str(output_dir), config)
+    describe_images(messages, str(output_dir))
+    generate_html(messages, participants, str(output_file), chat_name, app_name=app_name)
+    print(f"\n{'='*60}")
+    print("EXPORT COMPLETE!")
+    print(f"{'='*60}")
+    print(f"\nOpen {output_file} in your browser.")
+
+
 # ─── Signal helpers ──────────────────────────────────────────────────────────
 
 def detect_media_type(filename: str) -> str:
@@ -220,36 +288,10 @@ def run_signal(args) -> None:
     messages, participants = load_signal_export(chat_dir)
     print(f"  Loaded {len(messages)} messages")
 
-    if args.start_date or args.end_date:
-        start_dt = datetime.strptime(args.start_date, "%Y-%m-%d") if args.start_date else None
-        end_dt = datetime.strptime(args.end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59) if args.end_date else None
-        def in_range(msg):
-            try:
-                d = datetime.fromisoformat(msg["date"].replace("Z", "+00:00")).replace(tzinfo=None)
-                if start_dt and d < start_dt:
-                    return False
-                if end_dt and d > end_dt:
-                    return False
-            except Exception:
-                pass
-            return True
-        messages = [m for m in messages if in_range(m)]
-        print(f"  After date filter: {len(messages)} messages")
+    start_dt, end_dt = parse_date_args(args.start_date, args.end_date)
+    messages = filter_messages(messages, start_dt, end_dt, args.limit)
 
-    if args.limit:
-        messages = messages[-args.limit:]
-        print(f"  After limit: {len(messages)} messages")
-
-    transcribe_media(messages, str(output_dir), config)
-    describe_images(messages, str(output_dir))
-
-    output_file = output_dir / SIGNAL_OUTPUT_FILE
-    generate_html(messages, participants, str(output_file), chat_name, app_name="Signal")
-
-    print(f"\n{'='*60}")
-    print("EXPORT COMPLETE!")
-    print(f"{'='*60}")
-    print(f"\nOpen {output_file} in your browser.")
+    run_pipeline(messages, participants, output_dir, output_dir / SIGNAL_OUTPUT_FILE, chat_name, "Signal", config)
 
 
 # ─── Telegram helpers ─────────────────────────────────────────────────────────
@@ -482,24 +524,9 @@ async def run_telegram(args) -> None:
         print(f"Output: {output_dir}")
 
         limit = args.limit
-        start_date = None
-        end_date = None
+        start_dt, end_dt = parse_date_args(args.start_date, args.end_date)
 
-        if args.start_date or args.end_date:
-            if args.start_date:
-                try:
-                    start_date = datetime.strptime(args.start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-                except ValueError:
-                    print(f"Invalid --start-date, ignoring.")
-            end_str = args.end_date
-            if end_str:
-                try:
-                    end_date = datetime.strptime(end_str, "%Y-%m-%d").replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
-                except ValueError:
-                    end_date = datetime.now(timezone.utc)
-            else:
-                end_date = datetime.now(timezone.utc)
-        elif not args.limit and not args.chat:
+        if not args.start_date and not args.end_date and not args.limit and not args.chat:
             print("\nFilter messages?")
             print("  1. Export all")
             print("  2. Message limit")
@@ -510,26 +537,15 @@ async def run_telegram(args) -> None:
                 limit = int(raw) if raw.isdigit() else None
             elif filter_choice == "3":
                 start_input = input("Start date (YYYY-MM-DD, or Enter to skip): ").strip()
-                end_input = input(f"End date (YYYY-MM-DD, default today): ").strip()
-                if start_input:
-                    try:
-                        start_date = datetime.strptime(start_input, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-                    except ValueError:
-                        print("Invalid start date, ignoring.")
-                end_date = datetime.now(timezone.utc)
-                if end_input:
-                    try:
-                        end_date = datetime.strptime(end_input, "%Y-%m-%d").replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
-                    except ValueError:
-                        print("Invalid end date, using today.")
+                end_input = input("End date (YYYY-MM-DD, default today): ").strip()
+                start_dt, end_dt = parse_date_args(start_input or None, end_input or None)
+                if not end_dt:
+                    end_dt = datetime.now(timezone.utc)
 
         messages = await download_messages_tg(
             client, entity, str(output_dir),
-            limit=limit, start_date=start_date, end_date=end_date,
+            limit=limit, start_date=start_dt, end_date=end_dt,
         )
-
-        transcribe_media(messages, str(output_dir), config)
-        describe_images(messages, str(output_dir))
 
         participants = {}
         async for msg in client.iter_messages(entity, limit=min(len(messages), 100)):
@@ -540,13 +556,7 @@ async def run_telegram(args) -> None:
             except Exception:
                 pass
 
-        output_file = output_dir / OUTPUT_FILE
-        generate_html(messages, participants, str(output_file), chat_name, app_name="Telegram")
-
-        print(f"\n{'='*60}")
-        print("EXPORT COMPLETE!")
-        print(f"{'='*60}")
-        print(f"\nOpen {output_file} in your browser.")
+        run_pipeline(messages, participants, output_dir, output_dir / OUTPUT_FILE, chat_name, "Telegram", config)
 
     finally:
         await client.disconnect()
