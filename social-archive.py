@@ -4,8 +4,8 @@ Chat Archive Tool
 Archive Telegram and Signal chats with voice transcription and image descriptions.
 
 Usage:
-  python social-archive.py signal   [--chat NAME] [--export-dir DIR] [--skip-export]
-  python social-archive.py telegram [--chat NAME] [--session NAME] [--start-date DATE] [--end-date DATE] [--limit N]
+  python social-archive.py --platform signal   [--chat NAME] [--export-dir DIR] [--skip-export]
+  python social-archive.py --platform telegram [--chat NAME] [--session NAME] [--start-date DATE] [--end-date DATE] [--limit N]
   python social-archive.py          # fully interactive
 """
 
@@ -570,34 +570,28 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python social-archive.py signal --chat "Jane Doe"
-  python social-archive.py signal --skip-export --chat "Jane Doe"
-  python social-archive.py telegram --session my_account --chat "Jane Doe"
-  python social-archive.py telegram --session my_account --start-date 2024-01-01
+  python social-archive.py --platform signal --chat "Jane Doe"
+  python social-archive.py --platform signal --skip-export --chat "Jane Doe"
+  python social-archive.py --platform telegram --session my_account --chat "Jane Doe"
+  python social-archive.py --platform telegram --session my_account --start-date 2024-01-01
   python social-archive.py          # fully interactive
         """,
     )
 
-    subparsers = parser.add_subparsers(dest="platform")
+    # Common
+    parser.add_argument("--platform", "-p", choices=["signal", "telegram"], help="Platform to archive")
+    parser.add_argument("--chat", "-c", help="Chat name to archive")
+    parser.add_argument("--start-date", help="Start date YYYY-MM-DD (inclusive)")
+    parser.add_argument("--end-date", help="End date YYYY-MM-DD (inclusive)")
+    parser.add_argument("--limit", type=int, help="Max number of messages")
+    add_transcription_arg(parser)
 
-    # Signal subcommand
-    sp = subparsers.add_parser("signal", help="Archive a Signal chat")
-    sp.add_argument("--export-dir", "-e", help="Path to sigexport output (default: ~/signal-export)")
-    sp.add_argument("--chat", "-c", help="Chat name (directory name in export-dir)")
-    sp.add_argument("--skip-export", action="store_true", help="Skip running sigexport")
-    sp.add_argument("--start-date", help="Start date YYYY-MM-DD (inclusive)")
-    sp.add_argument("--end-date", help="End date YYYY-MM-DD (inclusive)")
-    sp.add_argument("--limit", type=int, help="Max messages to include")
-    add_transcription_arg(sp)
+    # Signal-specific
+    parser.add_argument("--export-dir", "-e", help="[Signal] Path to sigexport output (default: ~/signal-export)")
+    parser.add_argument("--skip-export", action="store_true", help="[Signal] Skip running sigexport")
 
-    # Telegram subcommand
-    tp = subparsers.add_parser("telegram", help="Archive a Telegram chat")
-    tp.add_argument("--session", "-s", help="Session name")
-    tp.add_argument("--chat", "-c", help="Chat name, username, phone, or ID")
-    tp.add_argument("--start-date", help="Start date YYYY-MM-DD (inclusive)")
-    tp.add_argument("--end-date", help="End date YYYY-MM-DD (inclusive, default: today)")
-    tp.add_argument("--limit", type=int, help="Max messages to fetch")
-    add_transcription_arg(tp)
+    # Telegram-specific
+    parser.add_argument("--session", "-s", help="[Telegram] Session name")
 
     return parser
 
@@ -613,21 +607,8 @@ def main() -> None:
         choice = input("Select (1-2): ").strip()
         if choice == "1":
             args.platform = "signal"
-            args.export_dir = None
-            args.chat = None
-            args.skip_export = False
-            args.start_date = None
-            args.end_date = None
-            args.limit = None
-            args.transcription = None
         elif choice == "2":
             args.platform = "telegram"
-            args.session = None
-            args.chat = None
-            args.start_date = None
-            args.end_date = None
-            args.limit = None
-            args.transcription = None
         else:
             print("Invalid choice.")
             sys.exit(1)

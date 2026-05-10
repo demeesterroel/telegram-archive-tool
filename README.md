@@ -42,15 +42,16 @@ pip install -r requirements.txt
 ## Usage
 
 ```bash
-python social-archive.py                          # fully interactive
-python social-archive.py signal   [options]
-python social-archive.py telegram [options]
+python social-archive.py                                    # fully interactive
+python social-archive.py --platform signal   [options]
+python social-archive.py --platform telegram [options]
 ```
 
 **Common options (both platforms):**
 
 | Flag | Description |
 |------|-------------|
+| `--platform`, `-p` | `signal` or `telegram` |
 | `--chat`, `-c` | Chat name to archive |
 | `--start-date` | Start date `YYYY-MM-DD` (inclusive) |
 | `--end-date` | End date `YYYY-MM-DD` (inclusive) |
@@ -65,9 +66,9 @@ Signal Desktop must be installed and have your message history.
 Runs `sigexport` automatically before prompting for a chat.
 
 ```bash
-python social-archive.py signal --chat "Jane Doe"
-python social-archive.py signal --chat "Jane Doe" --start-date 2024-01-01
-python social-archive.py signal --skip-export --chat "Jane Doe" --limit 500
+python social-archive.py --platform signal --chat "Jane Doe"
+python social-archive.py --platform signal --chat "Jane Doe" --start-date 2024-01-01
+python social-archive.py --platform signal --skip-export --chat "Jane Doe" --limit 500
 ```
 
 **Signal-specific options:**
@@ -84,9 +85,9 @@ python social-archive.py signal --skip-export --chat "Jane Doe" --limit 500
 Requires API credentials — get from https://my.telegram.org/apps.
 
 ```bash
-python social-archive.py telegram --session my_account --chat "Jane Doe"
-python social-archive.py telegram --session my_account --chat "Jane Doe" --start-date 2024-01-01
-python social-archive.py telegram --session my_account --chat username123 --limit 500
+python social-archive.py --platform telegram --session my_account --chat "Jane Doe"
+python social-archive.py --platform telegram --session my_account --chat "Jane Doe" --start-date 2024-01-01
+python social-archive.py --platform telegram --session my_account --chat username123 --limit 500
 ```
 
 **Telegram-specific options:**
