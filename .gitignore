@@ -6,6 +6,7 @@ sessions/
 
 # Exported data (private content)
 exports/
+archive/
 
 # Python
 __pycache__/
