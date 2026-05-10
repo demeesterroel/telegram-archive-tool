@@ -42,43 +42,40 @@ pip install -r requirements.txt
 ## Usage
 
 ```bash
-python social-archive.py
-```
-
-Interactive mode — prompts for platform, then chat. Or specify everything via flags:
-
-```bash
+python social-archive.py                          # fully interactive
 python social-archive.py signal   [options]
 python social-archive.py telegram [options]
 ```
+
+**Common options (both platforms):**
+
+| Flag | Description |
+|------|-------------|
+| `--chat`, `-c` | Chat name to archive |
+| `--start-date` | Start date `YYYY-MM-DD` (inclusive) |
+| `--end-date` | End date `YYYY-MM-DD` (inclusive) |
+| `--limit` | Max number of messages |
+| `--transcription`, `-t` | Transcription method (see below) |
 
 ---
 
 ## Signal
 
 Signal Desktop must be installed and have your message history.
-
 Runs `sigexport` automatically before prompting for a chat.
 
 ```bash
-python social-archive.py signal
 python social-archive.py signal --chat "Jane Doe"
 python social-archive.py signal --chat "Jane Doe" --start-date 2024-01-01
-python social-archive.py signal --chat "Jane Doe" --export-dir ~/my-signal-export
 python social-archive.py signal --skip-export --chat "Jane Doe" --limit 500
 ```
 
-**Options:**
+**Signal-specific options:**
 
 | Flag | Description |
 |------|-------------|
-| `--chat`, `-c` | Chat name (directory name in export dir) |
 | `--export-dir`, `-e` | Path to sigexport output (default: `~/signal-export`) |
 | `--skip-export` | Skip running sigexport, use existing export as-is |
-| `--start-date` | Start date `YYYY-MM-DD` (inclusive) |
-| `--end-date` | End date `YYYY-MM-DD` (inclusive) |
-| `--limit` | Max number of messages to include |
-| `--transcription`, `-t` | Transcription method (see below) |
 
 ---
 
@@ -87,22 +84,17 @@ python social-archive.py signal --skip-export --chat "Jane Doe" --limit 500
 Requires API credentials — get from https://my.telegram.org/apps.
 
 ```bash
-python social-archive.py telegram
 python social-archive.py telegram --session my_account --chat "Jane Doe"
 python social-archive.py telegram --session my_account --chat "Jane Doe" --start-date 2024-01-01
 python social-archive.py telegram --session my_account --chat username123 --limit 500
 ```
 
-**Options:**
+**Telegram-specific options:**
 
 | Flag | Description |
 |------|-------------|
 | `--session`, `-s` | Session name (login once, reuse later) |
-| `--chat`, `-c` | Chat name, username, phone number, or ID |
-| `--start-date` | Start date `YYYY-MM-DD` (inclusive) |
-| `--end-date` | End date `YYYY-MM-DD` (inclusive, default: today) |
-| `--limit` | Max number of messages to fetch |
-| `--transcription`, `-t` | Transcription method (see below) |
+| `--chat`, `-c` | Accepts name, username, phone number, or ID |
 
 ### Getting API credentials
 
