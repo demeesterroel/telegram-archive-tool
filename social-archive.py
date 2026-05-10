@@ -220,6 +220,26 @@ def run_signal(args) -> None:
     messages, participants = load_signal_export(chat_dir)
     print(f"  Loaded {len(messages)} messages")
 
+    if args.start_date or args.end_date:
+        start_dt = datetime.strptime(args.start_date, "%Y-%m-%d") if args.start_date else None
+        end_dt = datetime.strptime(args.end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59) if args.end_date else None
+        def in_range(msg):
+            try:
+                d = datetime.fromisoformat(msg["date"].replace("Z", "+00:00")).replace(tzinfo=None)
+                if start_dt and d < start_dt:
+                    return False
+                if end_dt and d > end_dt:
+                    return False
+            except Exception:
+                pass
+            return True
+        messages = [m for m in messages if in_range(m)]
+        print(f"  After date filter: {len(messages)} messages")
+
+    if args.limit:
+        messages = messages[-args.limit:]
+        print(f"  After limit: {len(messages)} messages")
+
     transcribe_media(messages, str(output_dir), config)
     describe_images(messages, str(output_dir))
 
@@ -554,7 +574,10 @@ Examples:
     sp = subparsers.add_parser("signal", help="Archive a Signal chat")
     sp.add_argument("--export-dir", "-e", help="Path to sigexport output (default: ~/signal-export)")
     sp.add_argument("--chat", "-c", help="Chat name (directory name in export-dir)")
-    sp.add_argument("--skip-export", "-s", action="store_true", help="Skip running sigexport")
+    sp.add_argument("--skip-export", action="store_true", help="Skip running sigexport")
+    sp.add_argument("--start-date", help="Start date YYYY-MM-DD (inclusive)")
+    sp.add_argument("--end-date", help="End date YYYY-MM-DD (inclusive)")
+    sp.add_argument("--limit", type=int, help="Max messages to include")
     add_transcription_arg(sp)
 
     # Telegram subcommand
@@ -583,6 +606,9 @@ def main() -> None:
             args.export_dir = None
             args.chat = None
             args.skip_export = False
+            args.start_date = None
+            args.end_date = None
+            args.limit = None
             args.transcription = None
         elif choice == "2":
             args.platform = "telegram"
