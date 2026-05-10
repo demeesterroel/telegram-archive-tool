@@ -238,7 +238,6 @@ def transcribe_audio(file_path: str, model_size: str = "base", language: Optiona
     try:
         import torch
         model = load_whisper_model(model_size)
-        print(f"  Transcribing: {os.path.basename(file_path)}")
         result = model.transcribe(file_path, language=language, fp16=torch.cuda.is_available())
         return result["text"].strip()
     except Exception as e:
@@ -349,7 +348,9 @@ def transcribe_media(messages: List[Dict[str, Any]], output_dir: str, config: Di
         loop_start = time.time()
 
         for i, m in enumerate(media_to_transcribe, 1):
-            print(f"[{i}/{len(media_to_transcribe)}] {m['filename']}")
+            dur = durations.get(m["filename"], 0)
+            dur_str = f" ({_fmt_secs(dur)})" if dur > 0 else ""
+            print(f"[{i}/{len(media_to_transcribe)}] Transcribing: {m['filename']}{dur_str}")
 
             file_path = m["path"]
             if m["type"] == "video":
