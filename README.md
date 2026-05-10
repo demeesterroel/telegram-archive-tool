@@ -63,8 +63,9 @@ Runs `sigexport` automatically before prompting for a chat.
 ```bash
 python social-archive.py signal
 python social-archive.py signal --chat "Jane Doe"
+python social-archive.py signal --chat "Jane Doe" --start-date 2024-01-01
 python social-archive.py signal --chat "Jane Doe" --export-dir ~/my-signal-export
-python social-archive.py signal --skip-export --chat "Jane Doe"
+python social-archive.py signal --skip-export --chat "Jane Doe" --limit 500
 ```
 
 **Options:**
@@ -74,6 +75,9 @@ python social-archive.py signal --skip-export --chat "Jane Doe"
 | `--chat`, `-c` | Chat name (directory name in export dir) |
 | `--export-dir`, `-e` | Path to sigexport output (default: `~/signal-export`) |
 | `--skip-export` | Skip running sigexport, use existing export as-is |
+| `--start-date` | Start date `YYYY-MM-DD` (inclusive) |
+| `--end-date` | End date `YYYY-MM-DD` (inclusive) |
+| `--limit` | Max number of messages to include |
 | `--transcription`, `-t` | Transcription method (see below) |
 
 ---
