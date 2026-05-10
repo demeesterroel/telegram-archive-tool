@@ -76,7 +76,22 @@ python social-archive.py --platform signal --skip-export --chat "Jane Doe" --lim
 | Flag | Description |
 |------|-------------|
 | `--export-dir`, `-e` | Path to sigexport output (default: `./archive/signal/exports`) |
+| `--signal-source` | Path to Signal config dir (see below) |
 | `--skip-export` | Skip running sigexport, use existing export as-is |
+
+**Signal config location** — pass via `--signal-source` if sigexport can't find it automatically:
+
+| Install type | Path |
+|---|---|
+| Standard | `~/.config/Signal` |
+| Flatpak | `~/.var/app/org.signal.Signal/config/Signal` |
+| Snap | `~/snap/signal-desktop/current/.config/Signal` |
+
+Flatpak example:
+```bash
+python social-archive.py --platform signal --chat "Jane Doe" \
+  --signal-source ~/.var/app/org.signal.Signal/config/Signal
+```
 
 ---
 
