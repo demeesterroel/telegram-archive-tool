@@ -234,7 +234,7 @@ def run_signal(args) -> None:
     if args.export_dir:
         export_dir = Path(args.export_dir).expanduser()
     else:
-        default_export = Path.home() / "signal-export"
+        default_export = Path(__file__).parent / "archive" / "signal" / "exports"
         raw = input(f"\nPath to signal-export output [{default_export}]: ").strip()
         export_dir = Path(raw).expanduser() if raw else default_export
 
@@ -587,7 +587,7 @@ Examples:
     add_transcription_arg(parser)
 
     # Signal-specific
-    parser.add_argument("--export-dir", "-e", help="[Signal] Path to sigexport output (default: ~/signal-export)")
+    parser.add_argument("--export-dir", "-e", help="[Signal] Path to sigexport output (default: ./archive/signal/exports)")
     parser.add_argument("--skip-export", action="store_true", help="[Signal] Skip running sigexport")
 
     # Telegram-specific
