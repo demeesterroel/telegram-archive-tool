@@ -42,10 +42,10 @@ pip install -r requirements.txt
 ## Usage
 
 ```bash
-python social-archive.py                                    # fully interactive
-python social-archive.py --platform signal   [options]
-python social-archive.py --platform telegram [options]
-python social-archive.py --platform whatsapp [options]
+./run.sh                                                    # fully interactive (auto-uses venv)
+./run.sh --platform signal   [options]
+./run.sh --platform telegram [options]
+./run.sh --platform whatsapp [options]
 ```
 
 **Common options (both platforms):**
