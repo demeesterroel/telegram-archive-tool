@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
 Chat Archive Tool
-Archive Telegram and Signal chats with voice transcription and image descriptions.
+Archive Telegram, Signal, and WhatsApp chats with voice transcription and image descriptions.
 
 Usage:
-  python social-archive.py --platform signal   [--chat NAME] [--export-dir DIR] [--skip-export]
-  python social-archive.py --platform telegram [--chat NAME] [--session NAME] [--start-date DATE] [--end-date DATE] [--limit N]
-  python social-archive.py          # fully interactive
+  python social-archive.py --platform signal    [--chat NAME] [--export-dir DIR] [--skip-export]
+  python social-archive.py --platform telegram  [--chat NAME] [--session NAME] [--start-date DATE] [--end-date DATE] [--limit N]
+  python social-archive.py --platform whatsapp  [--chat NAME] [--export-dir DIR]
+  python social-archive.py           # fully interactive
 """
 
 import argparse
@@ -38,6 +39,12 @@ from common import (
 SIGNAL_OUTPUT_FILE = "signal_archive.html"
 ME_SENDER_ID = 1
 OTHER_SENDER_ID_START = 1_000_000_001
+
+# ─── WhatsApp constants ───────────────────────────────────────────────────────
+
+WHATSAPP_OUTPUT_FILE = "whatsapp_archive.html"
+WA_ME_SENDER_ID = 1
+WA_OTHER_SENDER_ID_START = 1_000_000_001
 
 
 # ─── Shared helpers ───────────────────────────────────────────────────────────
@@ -106,6 +113,292 @@ def run_pipeline(
     print("EXPORT COMPLETE!")
     print(f"{'='*60}")
     print(f"\nOpen {output_file} in your browser.")
+
+
+# ─── WhatsApp helpers ────────────────────────────────────────────────────────
+
+import re as _re
+
+# Matches both Android and iOS timestamp formats:
+#   Android: [DD/MM/YYYY, HH:MM:SS]
+#   iOS:     [DD/MM/YYYY HH:MM:SS]
+#   Also handles 12-hour format with AM/PM
+_WA_LINE_RE = _re.compile(
+    r"^\[?"
+    r"(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})[,\s]"
+    r"(\d{1,2}:\d{2}(?::\d{2})?(?:\s?[AP]M)?)"
+    r"\]?\s[-–]\s"
+    r"([^:]+?):\s"
+    r"(.*)",
+    _re.IGNORECASE,
+)
+
+# System messages (no sender): join/left/missed call/etc.
+_WA_SYSTEM_RE = _re.compile(
+    r"^\[?"
+    r"(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})[,\s]"
+    r"(\d{1,2}:\d{2}(?::\d{2})?(?:\s?[AP]M)?)"
+    r"\]?\s[-–]\s"
+    r"(?!.+?:\s)",  # no 'Sender: ' after dash
+    _re.IGNORECASE,
+)
+
+# Attachment filename as exported: '<attached: filename>'
+_WA_ATTACH_RE = _re.compile(r"<attached:\s*(.+?)\s*>", _re.IGNORECASE)
+# Older Android format: 'filename (file attached)'
+_WA_ATTACH_OLD_RE = _re.compile(r"^(.+?)\s+\(file attached\)$", _re.IGNORECASE)
+
+
+def _parse_wa_datetime(date_str: str, time_str: str) -> Optional[datetime]:
+    """Parse WhatsApp date/time strings into a UTC-aware datetime."""
+    date_str = date_str.strip()
+    time_str = time_str.strip()
+
+    # Normalise separator: replace dots/dashes with /
+    date_str = _re.sub(r"[.-]", "/", date_str)
+
+    # Try a set of common format combinations
+    for dfmt in ("%d/%m/%Y", "%m/%d/%Y", "%d/%m/%y", "%m/%d/%y"):
+        for tfmt in ("%H:%M:%S", "%H:%M", "%I:%M:%S %p", "%I:%M %p",
+                     "%I:%M:%S%p", "%I:%M%p"):
+            try:
+                dt = datetime.strptime(f"{date_str} {time_str}", f"{dfmt} {tfmt}")
+                return dt.replace(tzinfo=timezone.utc)
+            except ValueError:
+                continue
+    return None
+
+
+def _wa_media_type(filename: str) -> str:
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext in ("jpg", "jpeg", "png", "gif", "webp", "heic", "tif", "tiff", "bmp"):
+        return "photo"
+    if ext in ("mp4", "mov", "avi", "mkv", "3gp", "ts"):
+        return "video"
+    if ext in ("opus", "ogg", "oga", "m4a", "aac", "mp3", "wav", "amr"):
+        return "voice"
+    return "document"
+
+
+def load_whatsapp_export(
+    export_dir: Path, owner_name: Optional[str] = None
+) -> Tuple[List[Dict[str, Any]], Dict[int, str]]:
+    """Parse a WhatsApp chat export folder into messages + participants.
+
+    The export folder should contain:
+      - A *_chat.txt  (or _chat.txt) file
+      - Any media files referenced in the chat
+    """
+    # Locate the chat text file
+    txt_files = sorted(export_dir.glob("*_chat.txt")) or sorted(export_dir.glob("_chat.txt"))
+    if not txt_files:
+        # Fallback: any .txt file in the folder
+        txt_files = [f for f in export_dir.iterdir() if f.suffix == ".txt" and f.is_file()]
+    if not txt_files:
+        print(f"Error: no chat .txt file found in {export_dir}")
+        sys.exit(1)
+    chat_txt = txt_files[0]
+    print(f"  Parsing: {chat_txt.name}")
+
+    sender_name_to_id: Dict[str, int] = {}
+    next_other_id = WA_OTHER_SENDER_ID_START
+    messages: List[Dict[str, Any]] = []
+
+    # The 'Me' / owner name in WhatsApp exports is whichever name appears
+    # as the sender. We can let the user specify it; otherwise we treat
+    # whoever sent the first message as "others" and flag the owner later.
+    # Without knowing the owner we mark everyone as "other".
+    owner = owner_name  # may be None
+
+    current_msg: Optional[Dict[str, Any]] = None
+
+    with open(chat_txt, "r", encoding="utf-8") as fh:
+        for raw_line in fh:
+            line = raw_line.rstrip("\n").rstrip("\r")
+
+            m = _WA_LINE_RE.match(line)
+            if m:
+                # Save previous message
+                if current_msg is not None:
+                    messages.append(current_msg)
+
+                date_s, time_s, sender, text = m.group(1), m.group(2), m.group(3).strip(), m.group(4).strip()
+                dt = _parse_wa_datetime(date_s, time_s)
+                date_iso = dt.isoformat() if dt else f"{date_s} {time_s}"
+
+                # Assign sender IDs
+                if owner and sender == owner:
+                    sid = WA_ME_SENDER_ID
+                else:
+                    if sender not in sender_name_to_id:
+                        sender_name_to_id[sender] = next_other_id
+                        next_other_id += 1
+                    sid = sender_name_to_id[sender]
+
+                # Detect attachment
+                media: Optional[Dict[str, Any]] = None
+                attach_m = _WA_ATTACH_RE.search(text)
+                if not attach_m:
+                    attach_m = _WA_ATTACH_OLD_RE.match(text)
+                if attach_m:
+                    fname = attach_m.group(1).strip()
+                    media_path = export_dir / fname
+                    if media_path.exists():
+                        media = {
+                            "type": _wa_media_type(fname),
+                            "path": str(media_path),
+                            "filename": fname,
+                        }
+                    # Strip attachment marker from text
+                    text = _WA_ATTACH_RE.sub("", text).strip()
+                    text = _WA_ATTACH_OLD_RE.sub("", text).strip()
+
+                current_msg = {
+                    "id": len(messages),
+                    "date": date_iso,
+                    "text": text,
+                    "sender_id": sid,
+                    "media": media,
+                    "_sender_name": sender,
+                }
+            else:
+                # Continuation line (multi-line message)
+                if current_msg is not None:
+                    current_msg["text"] += "\n" + line
+
+    # Flush the last buffered message
+    if current_msg is not None:
+        messages.append(current_msg)
+
+    # Build participants map
+    participants: Dict[int, str] = {}
+    if owner:
+        participants[WA_ME_SENDER_ID] = "Me"
+    for name, sid in sender_name_to_id.items():
+        participants[sid] = name
+
+    # If owner was not set, treat all senders as "others" (no outgoing styling)
+    if not owner:
+        for name, sid in sender_name_to_id.items():
+            participants[sid] = name
+
+    return messages, participants
+
+
+def list_whatsapp_exports(export_dir: Path) -> List[Path]:
+    """Return subdirs (or the dir itself) that contain a WhatsApp chat .txt file."""
+    candidates = []
+    # Each subdir could be one export
+    for sub in sorted(export_dir.iterdir()):
+        if sub.is_dir():
+            if list(sub.glob("*_chat.txt")) or list(sub.glob("_chat.txt")):
+                candidates.append(sub)
+    # Also consider the root itself
+    if not candidates:
+        if list(export_dir.glob("*_chat.txt")) or list(export_dir.glob("_chat.txt")):
+            candidates.append(export_dir)
+    return candidates
+
+
+# ─── WhatsApp main ────────────────────────────────────────────────────────────
+
+def run_whatsapp(args) -> None:
+    print("=" * 60)
+    print("  WhatsApp Chat Archive Tool")
+    print("=" * 60)
+
+    config = load_config()
+
+    # Determine export directory
+    if args.export_dir:
+        export_dir = Path(args.export_dir).expanduser()
+    else:
+        default_export = Path(__file__).parent / "archive" / "whatsapp" / "exports"
+        raw = input(f"\nPath to WhatsApp export folder [{default_export}]: ").strip()
+        export_dir = Path(raw).expanduser() if raw else default_export
+
+    if not export_dir.exists():
+        print(f"Error: directory not found: {export_dir}")
+        print("\nHow to export a WhatsApp chat:")
+        print("  iOS/Android → open chat → ⋮ / ⓘ → More → Export Chat")
+        print("  Unzip the exported .zip file and pass the folder here.")
+        sys.exit(1)
+
+    # Discover chats (sub-folders or the folder itself)
+    chats = list_whatsapp_exports(export_dir)
+
+    if not chats:
+        # Maybe export_dir IS a chat folder directly
+        if list(export_dir.glob("*_chat.txt")) or list(export_dir.glob("_chat.txt")) or \
+                [f for f in export_dir.iterdir() if f.suffix == ".txt" and f.is_file()]:
+            chats = [export_dir]
+        else:
+            print(f"No WhatsApp chat export found in {export_dir}")
+            print("Make sure the folder contains a *_chat.txt file.")
+            sys.exit(1)
+
+    if args.chat:
+        matches = [d for d in chats if d.name == args.chat]
+        if not matches:
+            print(f"Error: chat '{args.chat}' not found in {export_dir}")
+            print("Available:", ", ".join(d.name for d in chats))
+            sys.exit(1)
+        chat_dir = matches[0]
+    elif len(chats) == 1:
+        chat_dir = chats[0]
+        print(f"\nUsing: {chat_dir.name}")
+    else:
+        print("\nAvailable WhatsApp exports:")
+        for i, d in enumerate(chats, 1):
+            txt_files = list(d.glob("*_chat.txt")) or list(d.glob("_chat.txt")) or \
+                [f for f in d.iterdir() if f.suffix == ".txt"]
+            print(f"  {i:3}. {d.name}")
+        choice = input("\nSelect chat number: ").strip()
+        if not choice.isdigit() or not (1 <= int(choice) <= len(chats)):
+            print("Invalid choice.")
+            sys.exit(1)
+        chat_dir = chats[int(choice) - 1]
+
+    chat_name = chat_dir.name
+    print(f"\nProcessing: {chat_name}")
+
+    # Ask for owner name (optional — enables outgoing styling)
+    owner_name: Optional[str] = None
+    if args.wa_owner:
+        owner_name = args.wa_owner
+    elif not args.chat:  # skip interactive prompt only when --chat is given without --wa-owner
+        raw_owner = input(
+            "\nEnter YOUR name exactly as it appears in the export\n"
+            "(press Enter to skip — all messages will appear as incoming): "
+        ).strip()
+        if raw_owner:
+            owner_name = raw_owner
+
+    project_root = Path(__file__).parent
+    output_dir = project_root / "archive" / "whatsapp" / chat_name
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Symlink media directory
+    media_link = output_dir / "media"
+    if not media_link.exists() and not media_link.is_symlink():
+        os.symlink(chat_dir.resolve(), media_link)
+
+    resolve_transcription(config, args.transcription)
+
+    print(f"\n{'='*60}")
+    print("PHASE 1: Parsing WhatsApp export")
+    print(f"{'='*60}")
+    messages, participants = load_whatsapp_export(chat_dir, owner_name=owner_name)
+    print(f"  Loaded {len(messages)} messages")
+
+    start_dt, end_dt = parse_date_args(args.start_date, args.end_date)
+    messages = filter_messages(messages, start_dt, end_dt, args.limit)
+
+    run_pipeline(
+        messages, participants,
+        output_dir, output_dir / WHATSAPP_OUTPUT_FILE,
+        chat_name, "WhatsApp", config,
+    )
 
 
 # ─── Signal helpers ──────────────────────────────────────────────────────────
@@ -606,7 +899,7 @@ Examples:
     )
 
     # Common
-    parser.add_argument("--platform", "-p", choices=["signal", "telegram"], help="Platform to archive")
+    parser.add_argument("--platform", "-p", choices=["signal", "telegram", "whatsapp"], help="Platform to archive")
     parser.add_argument("--chat", "-c", help="Chat name to archive")
     parser.add_argument("--start-date", help="Start date YYYY-MM-DD (inclusive)")
     parser.add_argument("--end-date", help="End date YYYY-MM-DD (inclusive)")
@@ -614,9 +907,15 @@ Examples:
     add_transcription_arg(parser)
 
     # Signal-specific
-    parser.add_argument("--export-dir", "-e", help="[Signal] Path to sigexport output (default: ./archive/signal/exports)")
+    parser.add_argument("--export-dir", "-e",
+        help="[Signal/WhatsApp] Path to export output folder "
+             "(Signal default: ./archive/signal/exports; "
+             "WhatsApp: path to unzipped chat export folder)")
     parser.add_argument("--signal-source", help="[Signal] Path to Signal config dir (for flatpak: ~/.var/app/org.signal.Signal/config/Signal)")
     parser.add_argument("--skip-export", action="store_true", help="[Signal] Skip running sigexport")
+
+    # WhatsApp-specific
+    parser.add_argument("--wa-owner", help="[WhatsApp] Your name as it appears in the export (for outgoing message styling)")
 
     # Telegram-specific
     parser.add_argument("--session", "-s", help="[Telegram] Session name")
@@ -632,19 +931,28 @@ def main() -> None:
         print("Select platform:")
         print("  1. Signal")
         print("  2. Telegram")
-        choice = input("Select (1-2): ").strip()
+        print("  3. WhatsApp")
+        choice = input("Select (1-3): ").strip()
         if choice == "1":
             args.platform = "signal"
         elif choice == "2":
             args.platform = "telegram"
+        elif choice == "3":
+            args.platform = "whatsapp"
         else:
             print("Invalid choice.")
             sys.exit(1)
+
+    # Allow --wa-owner to override even when passed via CLI
+    if not hasattr(args, "wa_owner"):
+        args.wa_owner = None
 
     if args.platform == "signal":
         run_signal(args)
     elif args.platform == "telegram":
         asyncio.run(run_telegram(args))
+    elif args.platform == "whatsapp":
+        run_whatsapp(args)
 
 
 if __name__ == "__main__":

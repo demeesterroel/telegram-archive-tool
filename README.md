@@ -1,6 +1,6 @@
 # Chat Archive Tool
 
-Export Telegram and Signal chat history to a browsable HTML archive with automatic voice transcription and image descriptions.
+Export Telegram, Signal, and WhatsApp chat history to a browsable HTML archive with automatic voice transcription and image descriptions.
 
 ## Features
 
@@ -45,13 +45,14 @@ pip install -r requirements.txt
 python social-archive.py                                    # fully interactive
 python social-archive.py --platform signal   [options]
 python social-archive.py --platform telegram [options]
+python social-archive.py --platform whatsapp [options]
 ```
 
 **Common options (both platforms):**
 
 | Flag | Description |
 |------|-------------|
-| `--platform`, `-p` | `signal` or `telegram` |
+| `--platform`, `-p` | `signal`, `telegram`, or `whatsapp` |
 | `--chat`, `-c` | Chat name to archive |
 | `--start-date` | Start date `YYYY-MM-DD` (inclusive) |
 | `--end-date` | End date `YYYY-MM-DD` (inclusive) |
@@ -121,16 +122,66 @@ python social-archive.py --platform telegram --session my_account --chat usernam
 
 ---
 
+## WhatsApp
+
+No third-party tool required — export directly from the WhatsApp app.
+
+### How to export a chat
+
+**Android:**
+1. Open the chat → tap ⋮ (three dots) → **More** → **Export chat**
+2. Choose **Include media** (recommended) or **Without media**
+3. Share/save the `.zip` file to your computer
+4. Unzip it — you'll get a folder containing `_chat.txt` and media files
+
+**iOS:**
+1. Open the chat → tap the contact/group name at the top → **Export Chat**
+2. Choose **Attach Media** (recommended) or **Without Media**
+3. Share/save the `.zip` file to your computer
+4. Unzip it — you'll get a folder containing `_chat.txt` and media files
+
+### Usage
+
+```bash
+# Interactive — prompts for export folder and your name
+python social-archive.py --platform whatsapp
+
+# Point directly at a single unzipped export folder
+python social-archive.py --platform whatsapp --export-dir ~/Downloads/WhatsApp\ Chat\ -\ Jane\ Doe
+
+# Non-interactive with owner name (enables outgoing bubble styling)
+python social-archive.py --platform whatsapp \
+  --export-dir ~/Downloads/whatsapp-exports \
+  --chat "WhatsApp Chat - Jane Doe" \
+  --wa-owner "John Smith"
+
+# Date range filter
+python social-archive.py --platform whatsapp \
+  --export-dir ~/Downloads/whatsapp-exports \
+  --start-date 2024-01-01 --end-date 2024-12-31
+```
+
+**WhatsApp-specific options:**
+
+| Flag | Description |
+|------|-------------|
+| `--export-dir`, `-e` | Path to the unzipped WhatsApp export folder |
+| `--wa-owner` | Your name exactly as it appears in the export (enables outgoing styling) |
+
+> **Note on `--wa-owner`**: WhatsApp exports use your contact name, not "Me". Run once without it to see all sender names, then re-run with the correct `--wa-owner` value to get proper outgoing/incoming bubble layout.
+
+---
+
 ## Output
 
 Writes to `archive/<platform>/<chat-name>/`:
 
 | File | Contents |
 |------|----------|
-| `signal_archive.html` / `chat_export.html` | Browsable HTML archive |
+| `signal_archive.html` / `chat_export.html` / `whatsapp_archive.html` | Browsable HTML archive |
 | `transcriptions.json` | Cached voice/video transcriptions |
 | `descriptions.json` | Cached image descriptions |
-| `media/` | Downloaded photos, videos, voice notes, documents |
+| `media/` | Symlink to export's media folder (Signal/WhatsApp) or downloaded files (Telegram) |
 
 ---
 
