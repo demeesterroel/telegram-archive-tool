@@ -314,14 +314,22 @@ def run_whatsapp(args) -> None:
         export_dir = Path(args.export_dir).expanduser()
     else:
         default_export = Path(__file__).parent / "archive" / "whatsapp" / "source"
+        print("\n" + "─" * 60)
+        print("  HOW TO EXPORT WHATSAPP CHAT DATA:")
+        print("  1. In WhatsApp (phone): Open chat → ⋮ / ⓘ → More → Export Chat")
+        print("  2. Choose 'Attach Media' (recommended)")
+        print("  3. Transfer the exported .zip file to your computer")
+        print("  4. Unzip it into: archive/whatsapp/source/<Chat-Name>/")
+        print("     (Folder should contain '_chat.txt' and media files)")
+        print("─" * 60)
         raw = input(f"\nPath to WhatsApp export folder [{default_export}]: ").strip()
         export_dir = Path(raw).expanduser() if raw else default_export
 
     if not export_dir.exists():
-        print(f"Error: directory not found: {export_dir}")
-        print("\nHow to export a WhatsApp chat:")
-        print("  iOS/Android → open chat → ⋮ / ⓘ → More → Export Chat")
-        print("  Unzip the exported .zip file and pass the folder here.")
+        print(f"\nError: Directory not found: {export_dir}")
+        print("\nPlease create the folder and unzip your WhatsApp export there:")
+        print(f"  mkdir -p {default_export}/MyChat")
+        print(f"  unzip WhatsApp_Export.zip -d {default_export}/MyChat/")
         sys.exit(1)
 
     # Discover chats (sub-folders or the folder itself)
@@ -555,12 +563,19 @@ def run_signal(args) -> None:
         export_dir = Path(args.export_dir).expanduser()
     else:
         default_export = Path(__file__).parent / "archive" / "signal" / "source"
-        raw = input(f"\nPath to signal-export output [{default_export}]: ").strip()
+        print("\n" + "─" * 60)
+        print("  HOW SIGNAL EXPORT WORKS:")
+        print("  • Automatic: This tool runs 'sigexport' to decrypt & dump your")
+        print("    Signal Desktop app database directly into:")
+        print(f"    {default_export}/")
+        print("  • Signal Desktop must be installed and logged in on this machine.")
+        print("─" * 60)
+        raw = input(f"\nPath to signal-export output folder [{default_export}]: ").strip()
         export_dir = Path(raw).expanduser() if raw else default_export
 
     if args.skip_export:
         if not export_dir.exists():
-            print(f"Error: directory not found: {export_dir}")
+            print(f"\nError: Directory not found: {export_dir}")
             sys.exit(1)
     else:
         run_sigexport(export_dir, source=args.signal_source)
