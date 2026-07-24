@@ -76,7 +76,7 @@ python social-archive.py --platform signal --skip-export --chat "Jane Doe" --lim
 
 | Flag | Description |
 |------|-------------|
-| `--export-dir`, `-e` | Path to sigexport output (default: `./archive/signal/source/exports`) |
+| `--export-dir`, `-e` | Path to sigexport output (default: `./archive/signal/source`) |
 | `--signal-source` | Path to Signal config dir (see below) |
 | `--skip-export` | Skip running sigexport, use existing export as-is |
 

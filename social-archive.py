@@ -534,13 +534,7 @@ def run_sigexport(export_dir: Path, source: Optional[str] = None) -> None:
 
 
 def list_signal_chats(export_dir: Path) -> List[Path]:
-    chats = sorted(d for d in export_dir.iterdir() if d.is_dir() and (d / "data.json").exists())
-    if not chats:
-        # Check one level deeper in case export_dir is source/ containing exports/
-        for sub in sorted(export_dir.iterdir()):
-            if sub.is_dir():
-                chats.extend(sorted(d for d in sub.iterdir() if d.is_dir() and (d / "data.json").exists()))
-    return chats
+    return sorted(d for d in export_dir.iterdir() if d.is_dir() and (d / "data.json").exists())
 
 
 def count_lines(path: Path) -> int:
@@ -560,7 +554,7 @@ def run_signal(args) -> None:
     if args.export_dir:
         export_dir = Path(args.export_dir).expanduser()
     else:
-        default_export = Path(__file__).parent / "archive" / "signal" / "source" / "exports"
+        default_export = Path(__file__).parent / "archive" / "signal" / "source"
         raw = input(f"\nPath to signal-export output [{default_export}]: ").strip()
         export_dir = Path(raw).expanduser() if raw else default_export
 
