@@ -125,10 +125,10 @@ import re as _re
 #   Also handles 12-hour format with AM/PM
 _WA_LINE_RE = _re.compile(
     r"^\[?"
-    r"(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})[,\s]"
+    r"(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})[,\s]+"
     r"(\d{1,2}:\d{2}(?::\d{2})?(?:\s?[AP]M)?)"
-    r"\]?\s[-–]\s"
-    r"([^:]+?):\s"
+    r"\]?\s*[-–]\s*"
+    r"([^:]+?):\s*"
     r"(.*)",
     _re.IGNORECASE,
 )
@@ -330,8 +330,11 @@ def run_whatsapp(args) -> None:
         print("  4. Unzip it into: archive/whatsapp/source/<Chat-Name>/")
         print("     (Folder should contain '_chat.txt' and media files)")
         print("─" * 60)
-        raw = input(f"\nPath to WhatsApp export folder [{default_export}]: ").strip()
-        export_dir = Path(raw).expanduser() if raw else default_export
+        if args.chat:  # non-interactive mode
+            export_dir = default_export
+        else:
+            raw = input(f"\nPath to WhatsApp export folder [{default_export}]: ").strip()
+            export_dir = Path(raw).expanduser() if raw else default_export
 
     if not export_dir.exists():
         print(f"\nError: Directory not found: {export_dir}")
