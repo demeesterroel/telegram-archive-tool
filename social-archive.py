@@ -285,17 +285,25 @@ def load_whatsapp_export(
     return messages, participants
 
 
+def _is_wa_chat_txt(path: Path) -> bool:
+    """Check if a file is a WhatsApp chat export text file."""
+    if not path.is_file() or path.suffix.lower() != ".txt":
+        return False
+    name = path.name.lower()
+    return "chat" in name or name.startswith("whatsapp")
+
+
 def list_whatsapp_exports(export_dir: Path) -> List[Path]:
     """Return subdirs (or the dir itself) that contain a WhatsApp chat .txt file."""
     candidates = []
     # Each subdir could be one export
     for sub in sorted(export_dir.iterdir()):
         if sub.is_dir():
-            if list(sub.glob("*_chat.txt")) or list(sub.glob("_chat.txt")):
+            if any(_is_wa_chat_txt(f) for f in sub.iterdir()):
                 candidates.append(sub)
     # Also consider the root itself
     if not candidates:
-        if list(export_dir.glob("*_chat.txt")) or list(export_dir.glob("_chat.txt")):
+        if any(_is_wa_chat_txt(f) for f in export_dir.iterdir()):
             candidates.append(export_dir)
     return candidates
 
@@ -337,12 +345,11 @@ def run_whatsapp(args) -> None:
 
     if not chats:
         # Maybe export_dir IS a chat folder directly
-        if list(export_dir.glob("*_chat.txt")) or list(export_dir.glob("_chat.txt")) or \
-                [f for f in export_dir.iterdir() if f.suffix == ".txt" and f.is_file()]:
+        if any(_is_wa_chat_txt(f) for f in export_dir.iterdir()):
             chats = [export_dir]
         else:
             print(f"No WhatsApp chat export found in {export_dir}")
-            print("Make sure the folder contains a *_chat.txt file.")
+            print("Make sure the folder contains a WhatsApp export .txt file (e.g. 'WhatsApp Chat with ...txt').")
             sys.exit(1)
 
     if args.chat:
