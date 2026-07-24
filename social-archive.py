@@ -313,7 +313,7 @@ def run_whatsapp(args) -> None:
     if args.export_dir:
         export_dir = Path(args.export_dir).expanduser()
     else:
-        default_export = Path(__file__).parent / "archive" / "whatsapp" / "exports"
+        default_export = Path(__file__).parent / "archive" / "whatsapp" / "source"
         raw = input(f"\nPath to WhatsApp export folder [{default_export}]: ").strip()
         export_dir = Path(raw).expanduser() if raw else default_export
 
@@ -375,7 +375,7 @@ def run_whatsapp(args) -> None:
             owner_name = raw_owner
 
     project_root = Path(__file__).parent
-    output_dir = project_root / "archive" / "whatsapp" / chat_name
+    output_dir = project_root / "archive" / "whatsapp" / "output" / chat_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Symlink media directory
@@ -534,7 +534,13 @@ def run_sigexport(export_dir: Path, source: Optional[str] = None) -> None:
 
 
 def list_signal_chats(export_dir: Path) -> List[Path]:
-    return sorted(d for d in export_dir.iterdir() if d.is_dir() and (d / "data.json").exists())
+    chats = sorted(d for d in export_dir.iterdir() if d.is_dir() and (d / "data.json").exists())
+    if not chats:
+        # Check one level deeper in case export_dir is source/ containing exports/
+        for sub in sorted(export_dir.iterdir()):
+            if sub.is_dir():
+                chats.extend(sorted(d for d in sub.iterdir() if d.is_dir() and (d / "data.json").exists()))
+    return chats
 
 
 def count_lines(path: Path) -> int:
@@ -554,7 +560,7 @@ def run_signal(args) -> None:
     if args.export_dir:
         export_dir = Path(args.export_dir).expanduser()
     else:
-        default_export = Path(__file__).parent / "archive" / "signal" / "exports"
+        default_export = Path(__file__).parent / "archive" / "signal" / "source" / "exports"
         raw = input(f"\nPath to signal-export output [{default_export}]: ").strip()
         export_dir = Path(raw).expanduser() if raw else default_export
 
@@ -592,7 +598,7 @@ def run_signal(args) -> None:
     print(f"\nProcessing: {chat_name}")
 
     project_root = Path(__file__).parent
-    output_dir = project_root / "archive" / "signal" / chat_name
+    output_dir = project_root / "archive" / "signal" / "output" / chat_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
     media_link = output_dir / "media"
@@ -836,7 +842,7 @@ async def run_telegram(args) -> None:
         if hasattr(entity, "last_name") and entity.last_name:
             chat_name += f" {entity.last_name}"
 
-        output_dir = Path("archive") / "telegram" / chat_name.replace("/", "_").replace("\\", "_")
+        output_dir = Path("archive") / "telegram" / "output" / chat_name.replace("/", "_").replace("\\", "_")
         output_dir.mkdir(parents=True, exist_ok=True)
         (output_dir / MEDIA_DIR).mkdir(exist_ok=True)
 
@@ -909,7 +915,7 @@ Examples:
     # Signal-specific
     parser.add_argument("--export-dir", "-e",
         help="[Signal/WhatsApp] Path to export output folder "
-             "(Signal default: ./archive/signal/exports; "
+             "(Signal default: ./archive/signal/source; "
              "WhatsApp: path to unzipped chat export folder)")
     parser.add_argument("--signal-source", help="[Signal] Path to Signal config dir (for flatpak: ~/.var/app/org.signal.Signal/config/Signal)")
     parser.add_argument("--skip-export", action="store_true", help="[Signal] Skip running sigexport")

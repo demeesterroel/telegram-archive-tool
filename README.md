@@ -76,7 +76,7 @@ python social-archive.py --platform signal --skip-export --chat "Jane Doe" --lim
 
 | Flag | Description |
 |------|-------------|
-| `--export-dir`, `-e` | Path to sigexport output (default: `./archive/signal/exports`) |
+| `--export-dir`, `-e` | Path to sigexport output (default: `./archive/signal/source/exports`) |
 | `--signal-source` | Path to Signal config dir (see below) |
 | `--skip-export` | Skip running sigexport, use existing export as-is |
 
@@ -174,7 +174,7 @@ python social-archive.py --platform whatsapp \
 
 ## Output
 
-Writes to `archive/<platform>/<chat-name>/`:
+Writes to `archive/<platform>/output/<chat-name>/`:
 
 | File | Contents |
 |------|----------|
